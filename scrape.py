@@ -83,5 +83,3 @@ def scrape(formatted_date, system_readable):
         page.close()
         context.close()
         browser.close()
-
-scrape('Okt. 10, 2022 - Okt. 16, 2022', 'Successfactors')
