@@ -8,9 +8,6 @@ from playwright.sync_api import sync_playwright
 from playwright import __main__ as pw
 import playwright
 
-# pw.main()
-print(playwright.__file__)
-exit()
 
 def ensure_playwright_browser():
     pass
@@ -33,7 +30,8 @@ def scrape(formatted_date, system_readable):
 
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=False, executable_path=Path.home().joinpath("automation-chromium"))#, channel='chrome')
+
+        browser = p.chromium.launch(headless=False, executable_path=Path.home().joinpath("sap-automation-chromium"))
         context = browser.new_context()
         page = context.new_page()
 
