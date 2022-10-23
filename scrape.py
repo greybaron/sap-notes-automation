@@ -1,5 +1,6 @@
 from importlib.resources import path
 import os
+import stat
 from pathlib import Path
 import shutil
 import sys
@@ -50,6 +51,9 @@ def download_chromium(platform):
     shutil.unpack_archive(zip_path, path)
 
     os.remove(zip_path)
+
+    if platform == "mac":
+        os.chmod(path.joinpath("Chromium.app/Contents/MacOS/chromium"), stat.S_IEXEC)
 
 
 
