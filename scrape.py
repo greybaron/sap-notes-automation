@@ -10,19 +10,19 @@ import requests
 
 def check_browser_install():
     if sys.platform == "win32":
-        if os.path.exists(Path.home().joinpath("sap-automation-chromium/chrome.exe")):
-            return True
-        else:
-            download_chromium('win')
-    # :)
+        chromepath = Path.home().joinpath("sap-automation-chromium/chrome.exe")
     elif sys.platform == "darwin":
-        if os.path.exists(Path.home().joinpath("sap-automation-chromium/Chromium.app/Contents/MacOS/Chromium")):
-            return True
-        else:
-            download_chromium('mac')
-            return True
+        chromepath = Path.home().joinpath("sap-automation-chromium/Chromium.app/Contents/MacOS/Chromium")
     else:
         raise NotImplementedError(f"not running windows or macos, sys {sys.platform} not supported")
+    
+    if not os.path.exists(chromepath):
+        download_chromium(('win' if sys.platform == 'win32' else 'mac'))
+    
+    return chromepath
+
+
+        
 
 
 def download_chromium(platform):
@@ -53,14 +53,8 @@ def download_chromium(platform):
 
 
 
-
-download_chromium('mac')
-# check_browser_install()
-
-
 def scrape(formatted_date, system_readable):
-
-    os.environ["PLAYWRIGHT_BROWSERS_PATH"] = ""
+    chromepath = check_browser_install()
 
     if system_readable == 'DE & CH & AT':
         system = "'PY-DE*'~'PY-CH*'~'PY-AT*'~'PA-PA-DE*'~'PA-PA-XX*'"
@@ -76,7 +70,7 @@ def scrape(formatted_date, system_readable):
 
     with sync_playwright() as p:
 
-        browser = p.chromium.launch(headless=False, executable_path=Path.home().joinpath("sap-automation-chromium/Chromium.app/Contents/MacOS/Chromium"))
+        browser = p.chromium.launch(headless=False, executable_path=chromepath)
         context = browser.new_context()
         page = context.new_page()
 
