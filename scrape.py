@@ -13,35 +13,48 @@ def check_browser_install():
         if os.path.exists(Path.home().joinpath("sap-automation-chromium/chrome.exe")):
             return True
         else:
-            download_windows()
+            download_chromium('win')
+    # :)
     elif sys.platform == "darwin":
         if os.path.exists(Path.home().joinpath("sap-automation-chromium/Chromium.app/Contents/MacOS/Chromium")):
             return True
         else:
-            download_macos()
+            download_chromium('mac')
             return True
     else:
         raise NotImplementedError(f"not running windows or macos, sys {sys.platform} not supported")
 
 
-def download_macos():
-    print("downloading Chromium for macOS")
+def download_chromium(platform):
+    print(f"downloading Chromium for {'Windows' if platform == 'win' else 'macOS'}")
 
     path = Path.home().joinpath("sap-automation-chromium/")
 
+    try:
+        shutil.rmtree(path)
+    except FileNotFoundError:
+        pass
 
-    zip_path = path.joinpath("chrome-mac.zip")
- 
-    response = requests.get("https://github.com/greybaron/sap-notes-automation/raw/main/chromium/chrome-mac.zip")
+    os.makedirs(path)
 
-    zip_path.write_bytes(response.content)
 
+    zip_path = path.joinpath("chromium.zip")
+
+    zip_response = requests.get(f"https://github.com/greybaron/sap-notes-automation/raw/main/chromium/chromium-{platform}.zip")
+
+    # this is dumb as the zip will be written to ram first and not streamed in chunks to storage
+    zip_path.write_bytes(zip_response.content)
 
 
     # shutil.make_archive(Path.home().joinpath("sap-automation-chromium/chrome_mac"), "zip", Path.home().joinpath("sap-automation-chromium/Chromium.app"))
     shutil.unpack_archive(zip_path, path)
 
-download_macos()
+    os.remove(zip_path)
+
+
+
+
+download_chromium('mac')
 # check_browser_install()
 
 
