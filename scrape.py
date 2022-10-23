@@ -1,16 +1,48 @@
+from importlib.resources import path
 import os
 from pathlib import Path
 import shutil
+import sys
 import keyring
 from playwright.sync_api import sync_playwright
+import requests
 
 
-from playwright import __main__ as pw
-import playwright
+def check_browser_install():
+    if sys.platform == "win32":
+        if os.path.exists(Path.home().joinpath("sap-automation-chromium/chrome.exe")):
+            return True
+        else:
+            download_windows()
+    elif sys.platform == "darwin":
+        if os.path.exists(Path.home().joinpath("sap-automation-chromium/Chromium.app/Contents/MacOS/Chromium")):
+            return True
+        else:
+            download_macos()
+            return True
+    else:
+        raise NotImplementedError(f"not running windows or macos, sys {sys.platform} not supported")
 
 
-def ensure_playwright_browser():
-    pass
+def download_macos():
+    print("downloading Chromium for macOS")
+
+    path = Path.home().joinpath("sap-automation-chromium/")
+
+
+    zip_path = path.joinpath("chrome-mac.zip")
+ 
+    response = requests.get("https://github.com/greybaron/sap-notes-automation/raw/main/chromium/chrome-mac.zip")
+
+    zip_path.write_bytes(response.content)
+
+
+
+    # shutil.make_archive(Path.home().joinpath("sap-automation-chromium/chrome_mac"), "zip", Path.home().joinpath("sap-automation-chromium/Chromium.app"))
+    shutil.unpack_archive(zip_path, path)
+
+download_macos()
+# check_browser_install()
 
 
 def scrape(formatted_date, system_readable):
@@ -31,7 +63,7 @@ def scrape(formatted_date, system_readable):
 
     with sync_playwright() as p:
 
-        browser = p.chromium.launch(headless=False, executable_path=Path.home().joinpath("sap-automation-chromium"))
+        browser = p.chromium.launch(headless=False, executable_path=Path.home().joinpath("sap-automation-chromium/Chromium.app/Contents/MacOS/Chromium"))
         context = browser.new_context()
         page = context.new_page()
 
