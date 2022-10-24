@@ -1,20 +1,20 @@
 import os
 import shutil
-import sys
 import traceback
 import webbrowser
 from datetime import date, timedelta
 from pathlib import Path
+from random import randint
 
 import keyring
-from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (QApplication, QComboBox, QDialog, QHBoxLayout,
                              QLabel, QLineEdit, QMessageBox, QPlainTextEdit,
-                             QPushButton, QVBoxLayout, QWidget, QScrollArea)
+                             QProgressDialog, QPushButton, QScrollArea,
+                             QVBoxLayout, QWidget)
 
 from analysis import analysis
-from scrape import scrape
+from scrape import ScrapeThread
 
 # sys.stdout = open("log.txt", "w")
 # sys.stderr = open("err.txt", "w")
@@ -81,6 +81,7 @@ class accountSetupWindow(QWidget):
 
             self.close()
 
+
         
 
 
@@ -113,8 +114,9 @@ class mainWindow(QWidget):
         self.main_layout.addStretch()
 
 
-        self.prepareOutputButton = QPushButton("PDF-Verzeichnis vorbereiten...")
-        self.prepareOutputButton.clicked.connect(self.prepareOutputFiles)
+        # self.prepareOutputButton = QPushButton("PDF-Verzeichnis vorbereiten...")
+        self.prepareOutputButton = QPushButton("2% chance")
+        self.prepareOutputButton.clicked.connect(self.confirm_prepare_output_dir)
 
         self.AccSetupButton = QPushButton("Launchpad-Account...")
         self.AccSetupButton.clicked.connect(self.startAccountSetup)
@@ -182,77 +184,107 @@ class mainWindow(QWidget):
                 })
             self.weekSelector.addItem(f"KW {kw}: {formatted_date}")
 
+    def prepare_output_dir(self, output_dir):
+        selected_date = self.possibleWeekChoices[self.weekSelector.currentIndex()]
+        year = selected_date['year']
+        kw = selected_date['kw']
 
-    def prepareOutputFiles(self):
-        dialog = QMessageBox(parent=self, text="This will delete everything inside '~/Downloads/Hinweise PDFs'!")
-        dialog.setWindowTitle("Warning")
-        dialog.setIcon(QMessageBox.Icon.Warning)
-        dialog.setStandardButtons(QMessageBox.StandardButton.Ok|
-                        QMessageBox.StandardButton.Cancel)
-        
+        try:
+            shutil.rmtree(output_dir)
+        except FileNotFoundError:
+            pass
 
-        # 1024 corresponds to 'ok' button press.
-        if dialog.exec() == 1024:
-            output_dir= Path.home().joinpath(f"Downloads/Hinweise PDFs")
-
-            selected_date = self.possibleWeekChoices[self.weekSelector.currentIndex()]
-            year = selected_date['year']
-            kw = selected_date['kw']
-
-            try:
-                shutil.rmtree(output_dir)
-            except FileNotFoundError:
-                pass
-
-            os.mkdir(output_dir)
+        os.mkdir(output_dir)
 
 
-            for name in ['DE_CH_AT', 'ESS', 'Reisemanagement', 'Successfactors']:
-                open(Path.joinpath(output_dir, f"SAP Hinweise {name} KW {kw}_{year}.pdf"), 'w').close()
-        
+        for name in ['DE_CH_AT', 'ESS', 'Reisemanagement', 'Successfactors']:
+            open(Path.joinpath(output_dir, f"SAP Hinweise {name} KW {kw}_{year}.pdf"), 'w').close()
+
+
+    def confirm_prepare_output_dir(self):
+        if randint(0, 49) == 0:
+            webbrowser.open("https://pbs.twimg.com/media/FYfy7mGUIAEBMVZ?format=jpg&name=small")
+    #     dialog = QMessageBox(parent=self, text="This will delete everything inside '~/Downloads/Hinweise PDFs'!")
+    #     dialog.setWindowTitle("Warning")
+    #     dialog.setIcon(QMessageBox.Icon.Warning)
+    #     dialog.setStandardButtons(QMessageBox.StandardButton.Ok|
+    #                     QMessageBox.StandardButton.Cancel)
+
+
+    #     # 1024 corresponds to 'ok' button press.
+    #     if dialog.exec() == 1024:
+    #         self.prepare_output_dir(Path.home().joinpath(f"Downloads/Ergebnis SAP Hinweise"))    
+    
 
     def startAccountSetup(self):
         self.accountSetupWindow = accountSetupWindow()
         self.accountSetupWindow.show()
 
 
+    # has to be declared before use
+    def startAnalysis(self, system, xlsx_india):
+        try:
+            results = analysis(system, xlsx_india)
+
+            if len(results) == 0:
+                self.a = alert(system, "Keine fehlenden Hinweise")
+            else:
+                self.results_window = results_window(system, results)
+                self.results_window.show()
+            
+        except Exception:
+            self.excv = exception_viewer("Analysis failed", traceback.format_exc())
+            return
+
+
+
     def start_processing(self, possibleWeekChoices, weekSelector, system):
+        
         selection_data = possibleWeekChoices[weekSelector.currentIndex()]
 
-        xlsx_india = Path.home().joinpath(f"Downloads/SAP Hinweise KW {selection_data['kw']}_{selection_data['year']}.xlsx")
+        output_dir = Path.home().joinpath(f"Downloads/Ergebnis SAP Hinweise")
 
-        if not xlsx_india.is_file():
-            self.a = alert("XLSX fehlt", f"~/Downloads/SAP Hinweise KW {selection_data['kw']}_{selection_data['year']}.xlsx existiert nicht")
-            return
-        elif keyring.get_password("system", "launchpad_username") is None or keyring.get_password("system", "launchpad_password") is None:
+        xlsx_india_path = Path.home().joinpath(f"Downloads/SAP-Notes Week {selection_data['kw']} -{selection_data['year']}.xlsx")
+        xlsx_target_path = output_dir.joinpath(f"SAP Hinweise KW {selection_data['kw']}_{selection_data['year']}.xlsx")
+
+
+        if keyring.get_password("system", "launchpad_username") is None or keyring.get_password("system", "launchpad_password") is None:
             self.a = alert("Keine Logindaten vorhanden", "Zuerst Launchpad-Account festlegen")
             return
-        else:
-            try:
-                delete_data_csv()
-            except Exception:
-                self.excv = exception_viewer("Deleting temp data failed", traceback.format_exc())
+
+
+        if not xlsx_target_path.is_file():
+            if not xlsx_india_path.is_file():
+                # xlsx wasn't found at either location
+                self.a = alert("XLSX fehlt", f'"{xlsx_india_path}" existiert nicht')
                 return
+            else:
+                # xlsx exists @ india_path → move to target_path (and rename)
+                self.prepare_output_dir(output_dir)
+                shutil.move(xlsx_india_path, xlsx_target_path)
+                self.a = alert("XLSX wurde verschoben", f'XLSX ist jetzt hier: "{xlsx_target_path}"')
+
+        try:
+            delete_data_csv()
+        except Exception:
+            self.excv = exception_viewer("Deleting temp data failed", traceback.format_exc())
+            return
             
-            try:
-                scrape(selection_data['formatted_date'], system)
-            except Exception:
-                self.excv = exception_viewer("Scraping failed", traceback.format_exc())
-                return
+        self.progressView = QProgressDialog()
+        self.progressView.setFixedWidth(250)
+        self.progressView.setWindowTitle("Hinweise werden abgerufen")
+        self.progressView.show()
 
-            try:
-                results = analysis(system, selection_data['kw'], selection_data['year'])
+        self.p_thread = ScrapeThread(selection_data['formatted_date'], system)
+        self.p_thread.progress_signal.connect(self.progressView.setValue)
+        self.p_thread.finished_signal.connect(lambda: self.startAnalysis(system, xlsx_target_path))
+        self.p_thread.error_signal.connect(self.show_scraping_error)
+        self.p_thread.start()
 
-                if len(results) == 0:
-                    self.a = alert(system, "Keine fehlenden Hinweise")
-                else:
-                    self.results_window = results_window(system, results)
-                    self.results_window.show()
-                    self.results_window.setFocus()
-                
-            except Exception:
-                self.excv = exception_viewer("Analysis failed", traceback.format_exc())
-                return
+    def show_scraping_error(self, error):
+        self.progressView.close()
+        self.excv = exception_viewer("Scraping failed", error)
+        
     
 
         
@@ -263,9 +295,13 @@ class mainWindow(QWidget):
 
 class results_window(QDialog):
     def __init__(self, system, results):
+
+        # importing to instance so that playwright note opener has access
+        self.results = results
+
         super().__init__()
         self.setWindowTitle(f"{system}  —  Ergebnisse")
-        self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowStaysOnTopHint)
+        # self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowStaysOnTopHint)
 
         self.mainLayout = QVBoxLayout()
         self.mainLayout.addWidget(QLabel("Fehlende Hinweise:"))
@@ -288,19 +324,16 @@ class results_window(QDialog):
             self.scrollContentLayout.addWidget(individualNoteButton)    
         self.scrollContent.setLayout(self.scrollContentLayout)
 
-        # self.scrollView.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
-        # self.scrollView.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.scrollView.setWidgetResizable(True)
         self.scrollView.setWidget(self.scrollContent)
 
         self.mainLayout.addWidget(self.scrollView)
-        # self.mainLayout.addStretch()
 
         self.ensureLoginButton = QPushButton("Anmelden (falls nötig)")
         self.ensureLoginButton.clicked.connect(lambda: webbrowser.open("https://launchpad.support.sap.com"))
         
         self.openAllNotesButton = QPushButton("Alle Notes anzeigen")
-        self.openAllNotesButton.clicked.connect(lambda: open_all_notes(results))
+        self.openAllNotesButton.clicked.connect(lambda: open_all_notes(self.results))
 
         self.buttonRow = QHBoxLayout()
         self.buttonRow.addWidget(self.ensureLoginButton)
@@ -312,6 +345,8 @@ class results_window(QDialog):
         self.openAllNotesButton.setDefault(True)
 
 
+
+
 def open_note(notenumber):
     webbrowser.open("https://launchpad.support.sap.com/#/notes/"+str(notenumber))
 
@@ -321,11 +356,48 @@ def open_all_notes(notes):
 
 
 
+# langsam
+# from playwright.async_api import async_playwright
+# import asyncio
+# from scrape import check_browser_install
+
+# async def open_notes_playwright(notes):
+#     async with async_playwright() as p:
+#         chromepath = check_browser_install()
+
+#         browser = await p.chromium.launch(headless=True, executable_path=chromepath)
+#         context = await browser.new_context()
+#         login_page = await context.new_page()
+
+#         await login_page.goto('http://launchpad.support.sap.com')
+
+#         # username input
+#         await login_page.locator("#j_username").fill(keyring.get_password("system", "launchpad_username"))
+#         await login_page.locator("#j_username").press("Enter")
+
+#         # password input
+#         await login_page.locator("#j_password").fill(keyring.get_password("system", "launchpad_password"))
+#         await login_page.locator("#j_password").press("Enter")
+
+#         # reusing the login page
+#         # page.goto("https://launchpad.support.sap.com/#/notes/"+notes[0])
+#         # await login_page.close()
+
+
+#         # opening all others in new tabs
+#         await asyncio.gather(*[createpage(context, note) for note in notes])
+
+# async def createpage(context, note):
+#     page = await context.new_page()
+#     await page.goto("https://launchpad.support.sap.com/#/notes/"+str(note))
+#     await page.wait_for_timeout(100000)
+
+
 def delete_data_csv():
     # Exception Handling is now in GUI
     csv_path = Path.home().joinpath("Downloads/data.csv")
 
-    if os.path.exists(csv_path):
+    if csv_path.exists():
         os.remove(csv_path)
 
 mw = mainWindow()

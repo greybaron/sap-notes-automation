@@ -1,84 +1,44 @@
-import openpyxl
-import pandas as pd
-
+import csv
+import os
 from pathlib import Path
 
-def analysis(system, kw, year):
-    #KW = input("What is the KW?: ")
-    
-    insap = []
-    inindia = []
+import openpyxl
 
+
+def analysis(system, india_xlsx_path):    
+    notes_from_sap = set()
+    notes_from_india = set()
 
     ### exc handling in GUI
-    # wb = openpyxl.load_workbook(os.environ['USERPROFILE'] + r'\Downloads\SAP Hinweise KW ' + str(KW) + '_' + str(year) + '.xlsx') #wb from india BUT FORMATTED
-    wb = openpyxl.load_workbook(Path.home().joinpath(f"Downloads/SAP Hinweise KW {kw}_{year}.xlsx")) #wb from india BUT FORMATTED
+    workbook_india = openpyxl.load_workbook(india_xlsx_path) #wb from india BUT FORMATTED
+    
+    # finding the exact name
+    for sheet in workbook_india.sheetnames:
+        if system in sheet:
+            worksheet_india = workbook_india[sheet]
+            break
 
-    # lol
-    if system == 'DE & CH & AT':
-        try:
-            ws = wb['SAP Hinweise DE & CH & AT']
-        except:
-            ws = wb['SAP Hinweise DE & CH & AT ']
-
-    elif system == 'ESS':
-        try:
-            ws = wb['ESS']
-        except:
-            ws = wb['ESS ']
-
-    elif system == 'Reisemanagement':
-        try:
-            ws = wb['Reisemanagement']
-        except:
-            ws = wb['Reisemanagement ']
-
-    elif system == 'Successfactors':
-        try:
-            ws = wb['Successfactors']
-        except:
-            ws = wb['Successfactors ']
-
-
-    #change csv into xlsx
-    # data_csv = pd.read_csv(os.environ['USERPROFILE']+r'\Downloads\data.csv', sep=';', lineterminator='\n')
-    # gfg = pd.ExcelWriter(os.environ['USERPROFILE']+r'\Downloads\data.xlsx')
-    data_csv = pd.read_csv(Path.home().joinpath('Downloads/data.csv'), sep=';', lineterminator='\n')
-    gfg = pd.ExcelWriter(Path.home().joinpath("Downloads/data.xlsx"))
-    data_csv.to_excel(gfg, index = False)
-    gfg.close()
-    wb2 = openpyxl.load_workbook(Path.home().joinpath("Downloads/data.xlsx"))# WB from SAP
-    ws2 = wb2['Sheet1']
-
-    #put all SAP NOTES IDS from wb SAP into array 'insap'
-    for i in range(2, ws2.max_row + 1):
-        cellsap = 'B' + str(i)
-        sapvalue = ws2[cellsap].value
-        insap.append(sapvalue)
-
-    #put all SAP NOTES from wb INDIA into array 'in india'
-    for e in range (2, ws.max_row + 1):
-        cellindia = 'A' + str(e)
-        cellvalueindia = ws[cellindia].value
-        if cellvalueindia is not None:
-            inindia.append(cellvalueindia)
-
-    #function to compare both arrays
-    def Diff(insap, inindia):
-        return list(set(insap) - set(inindia)) + list(set(inindia) - set(insap))
- 
-    return Diff(insap, inindia)
-
-    # if len(diff_sap_notes) == 0:
-    #     input('\nFINISHED! No differing entries.')
+    # get notes from SAP CSV, save to set 'notes_from_sap'
+    csv_path = Path.home().joinpath('Downloads/data.csv')
+    with open(csv_path, newline='') as csvfile:
+        spamreader = csv.reader(csvfile, delimiter=';', quotechar='|')
         
-    # else:
-    #     print('\nDiffering entries:\n')
-        
-    #     input('\nTo open all notes in browser, press a key and log in')
-    #     webbrowser.open("https://launchpad.support.sap.com")
-        
-        
-    #     input('\nPress any key to continue')
-    #     for i in diff_sap_notes:
-    #         webbrowser.open("https://launchpad.support.sap.com/#/notes/"+str(i))
+        # skipping the first line
+        next(spamreader)
+
+        for row in spamreader:
+            notes_from_sap.add(int(row[1]))
+
+
+    # get notes from India XSLX, save to set 'notes_from_india'
+    for e in range (2, worksheet_india.max_row + 1):
+        cell_address = 'A' + str(e)
+        cell_value = worksheet_india[cell_address].value
+        if cell_value is not None:
+            notes_from_india.add(cell_value)
+
+
+    # cleaning up
+    os.remove(csv_path)
+
+    return notes_from_sap ^ notes_from_india
