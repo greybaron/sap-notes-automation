@@ -30,7 +30,7 @@ def check_browser_install():
 
 
 def download_chromium(platform):
-    # print(f"downloading Chromium for {'Windows' if platform == 'win' else 'macOS'}")
+    print(f"downloading Chromium for {'Windows' if platform == 'win' else 'macOS'}")
 
     path = Path.home().joinpath("sap-automation-chromium/")
 
@@ -52,6 +52,8 @@ def download_chromium(platform):
 
     # shutil.make_archive(Path.home().joinpath("sap-automation-chromium/chrome_mac"), "zip", Path.home().joinpath("sap-automation-chromium/Chromium.app"))
     shutil.unpack_archive(zip_path, path)
+
+    print("Download finished")
 
     os.remove(zip_path)
 
@@ -90,12 +92,14 @@ class ScrapeThread(QThread):
 
             with sync_playwright() as p:
         
+                print("Starting browser backend")
+
                 browser = p.chromium.launch(headless=True, executable_path=chromepath)
                 context = browser.new_context()
                 page = context.new_page()
-                
                 self.progress_signal.emit(20)
 
+                print("Logging in")
                 page.goto('http://launchpad.support.sap.com')
 
                 # username input
@@ -107,53 +111,52 @@ class ScrapeThread(QThread):
                 page.locator("#j_password").press("Enter")
 
                 try:
-                    page.wait_for_url("https://launchpad.support.sap.com/*", timeout=5000)
+                    page.wait_for_url("https://launchpad.support.sap.com/*", timeout=10000)
                 except TimeoutError as e:
                     raise PermissionError("Redirect from login page failed. Username/Password is likely incorrect.") from e
+                self.progress_signal.emit(25)
+
+                print("Accessing Notes page")
                 # go to Notes url (components pre-filled)
                 req_url = f"https://launchpad.support.sap.com/#/mynotes?tab=Search&sortBy=Relevance&filters=themk%25253Aeq~{system}%25252BreleaseStatus%25253Aeq~'NotRestricted'%25252BsecurityPatchDay%25253Aeq~'NotRestricted'%25252BfuzzyThreshold%25253Aeq~'0.9'"
                 page.goto(req_url)
-
                 self.progress_signal.emit(40)
 
+                print("Waiting for date input box")
                 # enter date since SAP is too incompetent to correctly parse it from url
-
                 # filling the "date box" with a dummy string and wait until it is empty
                 # since the sites' JS is cool and clears it while init'ing the page
                 datebox_dummy = page.locator("[placeholder=\"MMM d\\, y - MMM d\\, y\"]")
                 datebox_dummy.fill("dummy")
-
                 self.progress_signal.emit(60)
                 
-                tries = 100
+                print("Working around SAP js pain")
+                tries = 20
                 while datebox_dummy.input_value() == "dummy" and tries != 0:
                     tries -= 1
                     # waiting 50ms, then checking again if datebox has been reset
                     page.wait_for_timeout(50)
                     continue
 
-                if tries == 0:
-                    "IT HAPPENED\nIT HAPPENED\nIT HAPPENED\nIT HAPPENED\nIT HAPPENED\nIT HAPPENED\nIT HAPPENED\nIT HAPPENED\nIT HAPPENED\n"
-
                 page.locator("[placeholder=\"MMM d\\, y - MMM d\\, y\"]").fill(self.formatted_date)
-
-
-                # page.locator("[placeholder=\"MMM d\\, y - MM  y\"]").fill("Okt. 10, 2022 - Okt. 16, 2022")
                 self.progress_signal.emit(70)
-            
-                # Click button:has-text("Start")
+
+
+                print("Sending form request")
                 page.locator("button:has-text(\"Start\")").click()
                 self.progress_signal.emit(80)
 
+
+                print("Sent CSV request")
                 # request csv
                 with page.expect_download() as download_info:
                     page.locator("text=Liste als CSV-Datei exportierenListe als CSV-Datei exportieren").click()
                     self.progress_signal.emit(90)
-                    
+                
                 self.progress_signal.emit(100)
                 shutil.copy(download_info.value.path(), Path.home().joinpath("Downloads/data.csv"))
                 self.finished_signal.emit()
-
+                print("Downloaded successfully")
                 
 
                 page.close()
