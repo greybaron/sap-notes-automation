@@ -1,11 +1,13 @@
 import os
 import shutil
+import sys
 import traceback
 import webbrowser
 from datetime import date, timedelta
 from pathlib import Path
 
 import keyring
+from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (QApplication, QComboBox, QDialog, QHBoxLayout,
                              QLabel, QLineEdit, QMessageBox, QPlainTextEdit,
@@ -14,6 +16,8 @@ from PyQt6.QtWidgets import (QApplication, QComboBox, QDialog, QHBoxLayout,
 from analysis import analysis
 from scrape import scrape
 
+# sys.stdout = open("log.txt", "w")
+# sys.stderr = open("err.txt", "w")
 
 # simple popup window, only needs to be instantiated with title+text
 class alert(QMessageBox):
@@ -244,6 +248,7 @@ class mainWindow(QWidget):
                 else:
                     self.results_window = results_window(system, results)
                     self.results_window.show()
+                    self.results_window.setFocus()
                 
             except Exception:
                 self.excv = exception_viewer("Analysis failed", traceback.format_exc())
@@ -260,8 +265,11 @@ class results_window(QDialog):
     def __init__(self, system, results):
         super().__init__()
         self.setWindowTitle(f"{system}  —  Ergebnisse")
+        self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowStaysOnTopHint)
+
         self.mainLayout = QVBoxLayout()
         self.mainLayout.addWidget(QLabel("Fehlende Hinweise:"))
+        
 
         self.scrollView = QScrollArea()
         self.scrollContent = QWidget()

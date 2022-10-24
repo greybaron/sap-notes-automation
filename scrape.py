@@ -1,4 +1,3 @@
-from importlib.resources import path
 import os
 import stat
 from pathlib import Path
@@ -27,7 +26,7 @@ def check_browser_install():
 
 
 def download_chromium(platform):
-    print(f"downloading Chromium for {'Windows' if platform == 'win' else 'macOS'}")
+    # print(f"downloading Chromium for {'Windows' if platform == 'win' else 'macOS'}")
 
     path = Path.home().joinpath("sap-automation-chromium/")
 
@@ -74,7 +73,7 @@ def scrape(formatted_date, system_readable):
 
     with sync_playwright() as p:
 
-        browser = p.chromium.launch(headless=False, executable_path=chromepath)
+        browser = p.chromium.launch(headless=True, executable_path=chromepath)
         context = browser.new_context()
         page = context.new_page()
 
