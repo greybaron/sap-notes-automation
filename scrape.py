@@ -152,7 +152,7 @@ class ScrapeThread(QThread):
                     
                 self.progress_signal.emit(100)
                 shutil.copy(download_info.value.path(), Path.home().joinpath("Downloads/data.csv"))
-                self.finished_signal.emit(True)
+                self.finished_signal.emit()
 
                 
 
