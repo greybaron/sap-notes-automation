@@ -139,11 +139,9 @@ class MainWindow(QWidget):
 
         self.buttonLine0.addWidget(self.uselessButton)
         self.buttonLine0.addWidget(self.AccSetupButton)
-
         self.main_layout.addLayout(self.buttonLine0)
 
-        # self.main_layout.addStretch()
-        # self.main_layout.addSpacing(15)
+        self.main_layout.addSpacing(10)
 
         self.DECHATButton = QPushButton("DE && CH && AT")
         self.DECHATButton.clicked.connect(lambda: self.start_processing(self.possibleWeekChoices, self.weekSelector, "DE & CH & AT"))
@@ -153,7 +151,6 @@ class MainWindow(QWidget):
 
         self.buttonLine1.addWidget(self.DECHATButton)
         self.buttonLine1.addWidget(self.ReisemanagementButton)
-
         self.main_layout.addLayout(self.buttonLine1)
 
         self.ESSButton = QPushButton("ESS")
@@ -164,9 +161,6 @@ class MainWindow(QWidget):
 
         self.buttonLine2.addWidget(self.ESSButton)
         self.buttonLine2.addWidget(self.SuccButton)
-
-
-
         self.main_layout.addLayout(self.buttonLine2)
 
         # sys.stdout = Stream(newText=self.onUpdateText)
@@ -184,9 +178,15 @@ class MainWindow(QWidget):
         self.setLayout(self.main_layout)
         self.loadWeekSelectorContent()
 
+
         self.base_size = self.sizeHint()
-        print(self.base_size)
-        self.base_size.setWidth(self.base_size.width()+70)
+        
+        #
+        if sys.platform == "darwin":
+            self.base_size.setWidth(self.base_size.width()+70)
+
+            
+        
         print(self.base_size)
 
         self.setFixedSize(self.base_size)
