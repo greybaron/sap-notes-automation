@@ -11,7 +11,7 @@ from random import randint
 import keyring
 from playwright.async_api import async_playwright
 from PyQt6.QtCore import QObject, pyqtSignal
-from PyQt6.QtGui import QFont, QTextCursor
+from PyQt6.QtGui import QFont, QTextCursor, QSize
 from PyQt6.QtWidgets import (QApplication, QComboBox, QDialog, QHBoxLayout,
                              QLabel, QLineEdit, QMessageBox, QPlainTextEdit, QTextEdit,
                              QProgressDialog, QPushButton, QScrollArea,
@@ -28,15 +28,15 @@ def main():
     loop = QEventLoop(app)
     asyncio.set_event_loop(loop)
 
-    mw = mainWindow()
-    mw.show()
+    main_window = MainWindow()
+    main_window.show()
 
     with loop:
         loop.run_forever()
 
 
 # simple popup window, only needs to be instantiated with title+text
-class alert(QMessageBox):
+class Alert(QMessageBox):
     
     def __init__(self, title, text):
         super().__init__()
@@ -47,7 +47,7 @@ class alert(QMessageBox):
         self.show()
 
 
-class exception_viewer(QPlainTextEdit):
+class ExceptionViewer(QPlainTextEdit):
     def __init__(self, title, text):
         super().__init__()
 
@@ -60,7 +60,7 @@ class exception_viewer(QPlainTextEdit):
 
 
 
-class accountSetupWindow(QWidget):
+class AccountSetupWindow(QWidget):
     def __init__(self):
         super().__init__()
 
@@ -68,25 +68,25 @@ class accountSetupWindow(QWidget):
         self.setFixedSize(300, 100)
         self.main_layout = QVBoxLayout()
 
-        self.unameInput = QLineEdit()
-        self.unameInput.setPlaceholderText("E-Mail")
+        self.uname_input = QLineEdit()
+        self.uname_input.setPlaceholderText("E-Mail")
 
-        self.pwInput = QLineEdit()
-        self.pwInput.setPlaceholderText("Passwort")
-        self.pwInput.setEchoMode(QLineEdit.EchoMode.Password)
+        self.password_input = QLineEdit()
+        self.password_input.setPlaceholderText("Passwort")
+        self.password_input.setEchoMode(QLineEdit.EchoMode.Password)
 
-        self.saveButton = QPushButton("Speichern")
-        self.saveButton.clicked.connect(self.saveChanges)
+        self.save_button = QPushButton("Speichern")
+        self.save_button.clicked.connect(self.saveChanges)
 
 
-        self.main_layout.addWidget(self.unameInput)
-        self.main_layout.addWidget(self.pwInput)
-        self.main_layout.addWidget(self.saveButton)
+        self.main_layout.addWidget(self.uname_input)
+        self.main_layout.addWidget(self.password_input)
+        self.main_layout.addWidget(self.save_button)
         self.setLayout(self.main_layout)
 
     def saveChanges(self):
-        uname = self.unameInput.text()
-        pw = self.pwInput.text()
+        uname = self.uname_input.text()
+        pw = self.password_input.text()
 
         if uname != "" and pw != "":
             keyring.set_password("system", "launchpad_username", uname)
@@ -103,13 +103,13 @@ class Stream(QObject):
         self.newText.emit(str(text))
 
 
-class mainWindow(QWidget):
+class MainWindow(QWidget):
     def __init__(self):
         super().__init__()
 
         # window bastelei
         self.setWindowTitle("SAP Hinweise")
-        self.setFixedSize(360, 180)
+
 
         self.main_layout = QVBoxLayout()
         self.buttonLine0 = QHBoxLayout()
@@ -129,20 +129,20 @@ class mainWindow(QWidget):
         # self.main_layout.addSpacing(10)
 
 
-        # self.prepareOutputButton = QPushButton("PDF-Verzeichnis vorbereiten...")
-        self.prepareOutputButton = QPushButton("2% chance")
-        self.prepareOutputButton.clicked.connect(self.confirm_prepare_output_dir)
+        # self.uselessButton = QPushButton("PDF-Verzeichnis vorbereiten...")
+        self.uselessButton = QPushButton("2% chance")
+        self.uselessButton.clicked.connect(self.confirm_prepare_output_dir)
 
         self.AccSetupButton = QPushButton("Launchpad-Account...")
         self.AccSetupButton.clicked.connect(self.startAccountSetup)
 
-        self.buttonLine0.addWidget(self.prepareOutputButton)
+        self.buttonLine0.addWidget(self.uselessButton)
         self.buttonLine0.addWidget(self.AccSetupButton)
 
         self.main_layout.addLayout(self.buttonLine0)
 
         # self.main_layout.addStretch()
-        self.main_layout.addSpacing(15)
+        # self.main_layout.addSpacing(15)
 
         self.DECHATButton = QPushButton("DE && CH && AT")
         self.DECHATButton.clicked.connect(lambda: self.start_processing(self.possibleWeekChoices, self.weekSelector, "DE & CH & AT"))
@@ -168,36 +168,34 @@ class mainWindow(QWidget):
 
         self.main_layout.addLayout(self.buttonLine2)
 
-        # self.stdoutWidget = QPlainTextEdit()
-        # self.stdoutWidget.setReadOnly(True)
-        # self.main_layout.addWidget(self.stdoutWidget)
-    
-        self.setLayout(self.main_layout)
-        self.loadWeekSelectorContent()
-
-        sys.stdout = Stream(newText=self.onUpdateText)
-
+        # sys.stdout = Stream(newText=self.onUpdateText)
+        # streaming starts only when stdout_viewer is visible
         self.stdout_viewer = QTextEdit()
         self.stdout_viewer.setDisabled(True)
         self.stdout_viewer.moveCursor(QTextCursor.MoveOperation.Start)
         self.stdout_viewer.ensureCursorVisible()
         self.stdout_viewer.setLineWrapColumnOrWidth(500)
         self.stdout_viewer.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap)
+        self.main_layout.addWidget(self.stdout_viewer)
+        self.stdout_viewer.hide()
 
+
+        self.setLayout(self.main_layout)
+        self.loadWeekSelectorContent()
+
+        # self.setFixedSize(self.sizeHint().grownBy(QSize)
     
+    # 'text' (~ a single line) is received from stdout and then streamed here
     def onUpdateText(self, text):
         cursor = self.stdout_viewer.textCursor()
         cursor.movePosition(QTextCursor.MoveOperation.End)
+        # text is actually written here
         cursor.insertText(text)
         self.stdout_viewer.setTextCursor(cursor)
         self.stdout_viewer.ensureCursorVisible()
 
-    def __del__(self):
-        sys.stdout = sys.__stdout__
-
 
     def loadWeekSelectorContent(self):
-
         # filling the KW selector with 20 weeks (beginning at last week)
 
         monate = ["Jan.", "Feb.", "März", "Apr.", "Mai", "Juni", "Juli", "Aug.", "Sept.", "Okt.", "Nov.", "Dez."]
@@ -246,31 +244,23 @@ class mainWindow(QWidget):
     
 
     def startAccountSetup(self):
-        self.accountSetupWindow = accountSetupWindow()
-        self.accountSetupWindow.show()
+        self.AccountSetupWindow = AccountSetupWindow()
+        self.AccountSetupWindow.show()
 
-
-    # has to be declared before use
-    def startAnalysis(self, system, xlsx_india, notes_from_sap):
-        try:
-            results = analysis(system, xlsx_india, notes_from_sap)
-
-            if len(results) == 0:
-                self.a = alert(system, "Keine fehlenden Hinweise")
-            else:
-                self.results_window = results_window(system, results)
-                self.results_window.show()
-            
-        except Exception:
-            self.excv = exception_viewer("Analysis failed", traceback.format_exc())
-            return
-
-
+    def set_stdoutviewer_enabled(self, enabled):
+        if enabled:
+            self.stdout_viewer.show()
+            sys.stdout = Stream(newText=self.onUpdateText)
+            sys.stderr = Stream(newText=self.onUpdateText)
+        else:
+            sys.stdout = sys.__stdout__
+            sys.stderr = sys.__stderr__
+            self.stdout_viewer.hide()
+        
 
     def start_processing(self, possibleWeekChoices, weekSelector, system):
-        self.main_layout.addWidget(self.stdout_viewer)
-        
-        self.setFixedSize(360, 300)
+        # setting up stdout stream
+        self.set_stdoutviewer_enabled(True)
 
         selection_data = possibleWeekChoices[weekSelector.currentIndex()]
 
@@ -281,14 +271,14 @@ class mainWindow(QWidget):
 
 
         if keyring.get_password("system", "launchpad_username") is None or keyring.get_password("system", "launchpad_password") is None:
-            self.a = alert("Keine Logindaten vorhanden", "Zuerst Launchpad-Account festlegen")
+            self.a = Alert("Keine Logindaten vorhanden", "Zuerst Launchpad-Account festlegen")
             return
 
 
         if not xlsx_target_path.is_file():
             if not xlsx_india_path.is_file():
                 # xlsx wasn't found at either location
-                self.a = alert("XLSX fehlt", f'"{xlsx_india_path}" existiert nicht')
+                self.a = Alert("XLSX fehlt", f'"{xlsx_india_path}" existiert nicht')
                 return
             else:
                 # xlsx exists @ india_path → move to target_path (and rename)
@@ -296,35 +286,56 @@ class mainWindow(QWidget):
                 shutil.move(xlsx_india_path, xlsx_target_path)
                 
                 webbrowser.open(f"file://{output_dir}")
-                # self.a = alert("XLSX wurde verschoben", f'XLSX ist jetzt hier: "{xlsx_target_path}"')
+                # self.a = Alert("XLSX wurde verschoben", f'XLSX ist jetzt hier: "{xlsx_target_path}"')
 
         try:
             delete_data_csv()
         except Exception:
-            self.excv = exception_viewer("Deleting temp data failed", traceback.format_exc())
+            self.excv = ExceptionViewer("Deleting temp data failed", traceback.format_exc())
             return
             
         self.progressView = QProgressDialog()
         self.progressView.setFixedWidth(250)
         self.progressView.setWindowTitle("Hinweise werden abgerufen")
+        self.progressView.canceled.connect(self.cancel_scraping)
         self.progressView.show()
 
         self.p_thread = ScrapeThread(selection_data['formatted_date'], system)
         self.p_thread.progress_signal.connect(self.progressView.setValue)
-        self.p_thread.result_signal.connect(lambda notes_from_sap: self.startAnalysis(system, xlsx_target_path, notes_from_sap))
+        self.p_thread.result_signal.connect(lambda notes_from_sap: self.start_analysis(system, xlsx_target_path, notes_from_sap))
         # self.p_thread.result_signal.connect(self.startAnalysis)
         self.p_thread.error_signal.connect(self.show_scraping_error)
         self.p_thread.start()
 
+        # has to be declared before use
+    def start_analysis(self, system, xlsx_india, notes_from_sap):
+        self.set_stdoutviewer_enabled(False)
+        try:
+            results = analysis(system, xlsx_india, notes_from_sap)
+
+            if len(results) == 0:
+                self.a = Alert(system, "Keine fehlenden Hinweise")
+            else:
+                self.results_window = ResultsWindow(system, results)
+                self.results_window.show()
+            
+        except Exception:
+            self.excv = ExceptionViewer("Analysis failed", traceback.format_exc())
+            return
+
     def show_scraping_error(self, error):
         self.progressView.close()
-        self.excv = exception_viewer("Scraping failed", error)
+        self.excv = ExceptionViewer("Scraping failed", error)
+    
+    def cancel_scraping(self):
+        self.p_thread.terminate()
+        
         
     
 
 
 
-class results_window(QDialog):
+class ResultsWindow(QDialog):
     def __init__(self, system, results):
         # importing to instance so that playwright note opener has access
         self.results = results
