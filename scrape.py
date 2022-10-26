@@ -65,7 +65,7 @@ class ScrapeThread(QThread):
 
                 # on auth success, this would be the next url
                 if page.url[-14:] != '?redirect=true':
-                    raise AuthenticationError(f"\n\nLogin probably failed. Expected URL ending with '?redirect=true'\nGot URL='{page.url}'")
+                    raise AuthenticationError(f"\n\nAccount username/Password is probably wrong. Expected URL ending with '?redirect=true'\nGot URL='{page.url}'")
 
                 self.progress_signal.emit(25)
 

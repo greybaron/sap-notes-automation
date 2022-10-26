@@ -74,7 +74,7 @@ class accountSetupWindow(QWidget):
         self.pwInput.setEchoMode(QLineEdit.EchoMode.Password)
 
         self.saveButton = QPushButton("Speichern")
-        self.saveButton.clwicked.connect(self.saveChanges)
+        self.saveButton.clicked.connect(self.saveChanges)
 
 
         self.main_layout.addWidget(self.unameInput)
