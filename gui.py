@@ -2,6 +2,7 @@ import asyncio
 import sys
 import os
 import shutil
+import time
 import traceback
 import webbrowser
 from datetime import date, timedelta
@@ -11,7 +12,7 @@ from random import randint
 import keyring
 from playwright.async_api import async_playwright
 from PyQt6.QtCore import QObject, pyqtSignal
-from PyQt6.QtGui import QFont, QTextCursor, QSize
+from PyQt6.QtGui import QFont, QTextCursor
 from PyQt6.QtWidgets import (QApplication, QComboBox, QDialog, QHBoxLayout,
                              QLabel, QLineEdit, QMessageBox, QPlainTextEdit, QTextEdit,
                              QProgressDialog, QPushButton, QScrollArea,
@@ -183,6 +184,13 @@ class MainWindow(QWidget):
         self.setLayout(self.main_layout)
         self.loadWeekSelectorContent()
 
+        self.base_size = self.sizeHint()
+        print(self.base_size)
+        self.base_size.setWidth(self.base_size.width()+70)
+        print(self.base_size)
+
+        self.setFixedSize(self.base_size)
+
         # self.setFixedSize(self.sizeHint().grownBy(QSize)
     
     # 'text' (~ a single line) is received from stdout and then streamed here
@@ -310,6 +318,8 @@ class MainWindow(QWidget):
         # has to be declared before use
     def start_analysis(self, system, xlsx_india, notes_from_sap):
         self.set_stdoutviewer_enabled(False)
+        self.resize(self.sizeHint())
+
         try:
             results = analysis(system, xlsx_india, notes_from_sap)
 
@@ -328,7 +338,12 @@ class MainWindow(QWidget):
         self.excv = ExceptionViewer("Scraping failed", error)
     
     def cancel_scraping(self):
+        self.set_stdoutviewer_enabled(False)
+        print(self.sizeHint())
+        self.resize(self.sizeHint())
         self.p_thread.terminate()
+        time.sleep(1)
+        print(self.sizeHint())
         
         
     
