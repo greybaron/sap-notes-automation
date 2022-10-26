@@ -1,95 +1,20 @@
-import os
-import shutil
-import stat
-import sys
+import csv
+from multiprocessing import AuthenticationError
 import traceback
-from pathlib import Path
-from xml import dom
+
 
 import keyring
-import requests
 from playwright._impl._api_types import TimeoutError
 from playwright.sync_api import sync_playwright
 from PyQt6.QtCore import QThread, pyqtSignal
-
-
-def check_browser_install():
-    if sys.platform == "win32":
-        chromepath = Path.home().joinpath("sap-automation-chromium/chrome.exe")
-    elif sys.platform == "darwin":
-        chromepath = Path.home().joinpath("sap-automation-chromium/Chromium.app/Contents/MacOS/Chromium")
-    else:
-        raise NotImplementedError(f"not running windows or macos, platform {sys.platform} not supported")
-
-    if not chromepath.exists():
-        download_chromium(('win' if sys.platform == 'win32' else 'mac'))
-    
-    return chromepath
-
-
-
-
-        
-
-
-def download_chromium(platform):
-    print(f"downloading Chromium for {'Windows' if platform == 'win' else 'macOS'}")
-
-    path = Path.home().joinpath("sap-automation-chromium/")
-
-    try:
-        shutil.rmtree(path)
-    except FileNotFoundError:
-        pass
-
-    os.makedirs(path)
-
-
-    zip_path = path.joinpath("chromium.zip")
-
-    zip_response = requests.get(f"https://github.com/greybaron/sap-notes-automation/raw/main/chromium/chromium-{platform}.zip")
-
-    # this is dumb as the zip will be written to ram first and not streamed in chunks to storage
-    zip_path.write_bytes(zip_response.content)
-
-
-    print("Download finished")
-
-    
-    if platform == "win":
-        shutil.unpack_archive(zip_path, path)
-
-    # shutil.unpack screws up permissions and Gatekeeper probably fucks shit up as well,
-    # so using system unzip here
-    if platform == "mac":
-        os.system(f'unzip "{zip_path}" -d "{path}"')
-    
-    os.remove(zip_path)
-    
-
-def getListOfFiles(path):
-    # create a list of all files, including those in subdirectories
-    # recursively calls itself when encountering a folder, and keeps looping until it hits no more subfolders in any given directory
-    nodesAtLevel = os.listdir(path)
-
-    files = []
-    # Iterate over all the entries
-    for subnode in nodesAtLevel:
-        newPath = os.path.join(path, subnode)
-        # If entry is a directory then get the list of files in this directory 
-        if os.path.isdir(newPath):
-            files += getListOfFiles(newPath)
-        else:
-            files.append(Path(newPath))
-    return files    
-
+import chromium_utils
 
 
 
 class ScrapeThread(QThread):
 
     progress_signal = pyqtSignal(int)
-    finished_signal = pyqtSignal()
+    result_signal = pyqtSignal(set)
     error_signal = pyqtSignal(str)
 
     def __init__(self, formatted_date, system_readable):
@@ -99,7 +24,7 @@ class ScrapeThread(QThread):
 
     def run(self):
         try:
-            chromepath = check_browser_install()
+            chromepath = chromium_utils.check_browser_install()
             self.progress_signal.emit(10)
 
             if self.system_readable == 'DE & CH & AT':
@@ -126,44 +51,58 @@ class ScrapeThread(QThread):
                 print("Logging in")
                 page.goto('http://launchpad.support.sap.com')
 
+                print(f"lp: {page.url}")
+
                 # username input
-                page.locator("#j_username").fill(keyring.get_password("system", "launchpad_username"))
-                page.locator("#j_username").press("Enter")
+                uname_box = page.locator("#j_username")
+                uname_box.click()
+                uname_box.fill(keyring.get_password("system", "launchpad_username"))
+                uname_box.press("Enter")
 
                 # password input
-                page.locator("#j_password").fill(keyring.get_password("system", "launchpad_password"))
-                page.locator("#j_password").press("Enter")
+                password_box = page.locator("#j_password")
+                password_box.click()
+                password_box.fill(keyring.get_password("system", "launchpad_password"))
+                password_box.press("Enter")
 
-                try:
-                    page.wait_for_url("https://launchpad.support.sap.com/*", timeout=10000)
-                except TimeoutError as e:
-                    raise PermissionError("Redirect from login page failed. Username/Password is likely incorrect.") from e
+                # on auth success, this would be the next url
+                if page.url[-14:] != '?redirect=true':
+                    raise AuthenticationError(f"\n\nLogin probably failed. Expected URL ending with '?redirect=true'\nGot URL='{page.url}'")
+
                 self.progress_signal.emit(25)
 
                 print("Accessing Notes page")
                 # go to Notes url (components pre-filled)
                 req_url = f"https://launchpad.support.sap.com/#/mynotes?tab=Search&sortBy=Relevance&filters=themk%25253Aeq~{system}%25252BreleaseStatus%25253Aeq~'NotRestricted'%25252BsecurityPatchDay%25253Aeq~'NotRestricted'%25252BfuzzyThreshold%25253Aeq~'0.9'"
                 page.goto(req_url)
+
+
                 self.progress_signal.emit(40)
 
-                print("Waiting for date input box")
+                print("Waiting for site load")
+                page.wait_for_load_state("networkidle")
+
                 # enter date since SAP is too incompetent to correctly parse it from url
                 # filling the "date box" with a dummy string and wait until it is empty
                 # since the sites' JS is cool and clears it while init'ing the page
-                datebox_dummy = page.locator("[placeholder=\"MMM d\\, y - MMM d\\, y\"]")
-                datebox_dummy.fill("dummy")
-                self.progress_signal.emit(60)
-                
-                print("Working around SAP js pain")
-                tries = 20
-                while datebox_dummy.input_value() == "dummy" and tries != 0:
-                    tries -= 1
-                    # waiting 50ms, then checking again if datebox has been reset
-                    page.wait_for_timeout(50)
-                    continue
+                datebox = page.locator("[placeholder=\"MMM d\\, y - MMM d\\, y\"]")
+                datebox.click()
+                datebox.fill(self.formatted_date)
 
-                page.locator("[placeholder=\"MMM d\\, y - MMM d\\, y\"]").fill(self.formatted_date)
+                self.progress_signal.emit(65)
+                
+                # print("Working around SAP js pain")
+                # tries = 20
+                # while datebox_dummy.input_value() == "dummy" and tries != 0:
+                #     tries -= 1
+                #     # waiting 50ms, then checking again if datebox has been reset
+                #     page.wait_for_timeout(50)
+                #     continue
+
+                # clicking components to make sure js processing is done
+                page.get_by_role("textbox", name="Komponenten (exakt)").click()
                 self.progress_signal.emit(70)
+
 
 
                 print("Sending form request")
@@ -171,21 +110,38 @@ class ScrapeThread(QThread):
                 self.progress_signal.emit(80)
 
 
-                print("Sent CSV request")
+                print("Sending CSV request")
                 # request csv
                 with page.expect_download() as download_info:
                     page.locator("text=Liste als CSV-Datei exportierenListe als CSV-Datei exportieren").click()
                     self.progress_signal.emit(90)
-                
-                self.progress_signal.emit(100)
-                shutil.copy(download_info.value.path(), Path.home().joinpath("Downloads/data.csv"))
-                self.finished_signal.emit()
-                print("Downloaded successfully")
-                
 
+
+                notes_from_sap = read_csv(download_info.value.path())
+
+                self.progress_signal.emit(100)
+                self.result_signal.emit(notes_from_sap)
+
+                print("Done.")
                 page.close()
                 context.close()
                 browser.close()
 
         except Exception:
             self.error_signal.emit(traceback.format_exc())
+
+
+def read_csv(csv_path):
+    # get note numbers from SAP CSV, save to set
+    # csv_path = Path.home().joinpath('Downloads/data.csv')
+    with open(csv_path, newline='') as csvfile:
+        note_numbers = set()
+        csv_reader = csv.reader(csvfile, delimiter=';', quotechar='|')
+        
+        # skipping the first line
+        next(csv_reader)
+
+        for row in csv_reader:
+            note_numbers.add(int(row[1]))
+    
+    return note_numbers

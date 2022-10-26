@@ -1,3 +1,4 @@
+import asyncio
 import os
 import shutil
 import traceback
@@ -7,17 +8,30 @@ from pathlib import Path
 from random import randint
 
 import keyring
+from playwright.async_api import async_playwright
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (QApplication, QComboBox, QDialog, QHBoxLayout,
                              QLabel, QLineEdit, QMessageBox, QPlainTextEdit,
                              QProgressDialog, QPushButton, QScrollArea,
                              QVBoxLayout, QWidget)
+from qasync import QEventLoop, asyncSlot
 
+import chromium_utils
 from analysis import analysis
 from scrape import ScrapeThread
 
-# sys.stdout = open("log.txt", "w")
-# sys.stderr = open("err.txt", "w")
+
+def main():
+    app = QApplication([])
+    loop = QEventLoop(app)
+    asyncio.set_event_loop(loop)
+
+    mw = mainWindow()
+    mw.show()
+
+    with loop:
+        loop.run_forever()
+
 
 # simple popup window, only needs to be instantiated with title+text
 class alert(QMessageBox):
@@ -60,7 +74,7 @@ class accountSetupWindow(QWidget):
         self.pwInput.setEchoMode(QLineEdit.EchoMode.Password)
 
         self.saveButton = QPushButton("Speichern")
-        self.saveButton.clicked.connect(self.saveChanges)
+        self.saveButton.clwicked.connect(self.saveChanges)
 
 
         self.main_layout.addWidget(self.unameInput)
@@ -83,8 +97,7 @@ class accountSetupWindow(QWidget):
 
 
 
-app = QApplication([])
-window = QWidget()
+
 
 class mainWindow(QWidget):
     def __init__(self):
@@ -201,16 +214,6 @@ class mainWindow(QWidget):
     def confirm_prepare_output_dir(self):
         if randint(0, 49) == 0:
             webbrowser.open("https://pbs.twimg.com/media/FYfy7mGUIAEBMVZ?format=jpg&name=small")
-    #     dialog = QMessageBox(parent=self, text="This will delete everything inside '~/Downloads/Hinweise PDFs'!")
-    #     dialog.setWindowTitle("Warning")
-    #     dialog.setIcon(QMessageBox.Icon.Warning)
-    #     dialog.setStandardButtons(QMessageBox.StandardButton.Ok|
-    #                     QMessageBox.StandardButton.Cancel)
-
-
-    #     # 1024 corresponds to 'ok' button press.
-    #     if dialog.exec() == 1024:
-    #         self.prepare_output_dir(Path.home().joinpath(f"Downloads/Ergebnis SAP Hinweise"))    
     
 
     def startAccountSetup(self):
@@ -219,9 +222,9 @@ class mainWindow(QWidget):
 
 
     # has to be declared before use
-    def startAnalysis(self, system, xlsx_india):
+    def startAnalysis(self, system, xlsx_india, notes_from_sap):
         try:
-            results = analysis(system, xlsx_india)
+            results = analysis(system, xlsx_india, notes_from_sap)
 
             if len(results) == 0:
                 self.a = alert(system, "Keine fehlenden Hinweise")
@@ -274,7 +277,8 @@ class mainWindow(QWidget):
 
         self.p_thread = ScrapeThread(selection_data['formatted_date'], system)
         self.p_thread.progress_signal.connect(self.progressView.setValue)
-        self.p_thread.finished_signal.connect(lambda: self.startAnalysis(system, xlsx_target_path))
+        self.p_thread.result_signal.connect(lambda notes_from_sap: self.startAnalysis(system, xlsx_target_path, notes_from_sap))
+        # self.p_thread.result_signal.connect(self.startAnalysis)
         self.p_thread.error_signal.connect(self.show_scraping_error)
         self.p_thread.start()
 
@@ -284,17 +288,13 @@ class mainWindow(QWidget):
         
     
 
-        
-
-
-
 
 
 class results_window(QDialog):
     def __init__(self, system, results):
-
         # importing to instance so that playwright note opener has access
         self.results = results
+        self.context = None
 
         super().__init__()
         self.setWindowTitle(f"{system}  —  Ergebnisse")
@@ -308,32 +308,25 @@ class results_window(QDialog):
         self.scrollContent = QWidget()
         self.scrollContentLayout = QVBoxLayout()
 
-        
-        
-
-        
-
         for notenumber in results:
             individualNoteButton = QPushButton(str(notenumber))
             # i'm not sure exactly what lambda state does, but otherwise all buttons call
             # opennote with the same argument/number, so i guess it keeps the state of notenumber inside x
-            individualNoteButton.clicked.connect(lambda state, x=notenumber: open_note(x))
+            individualNoteButton.clicked.connect(lambda state, x=notenumber: self.playwright_noteviewer({x}))
+
             self.scrollContentLayout.addWidget(individualNoteButton)    
+
         self.scrollContent.setLayout(self.scrollContentLayout)
 
         self.scrollView.setWidgetResizable(True)
         self.scrollView.setWidget(self.scrollContent)
 
         self.mainLayout.addWidget(self.scrollView)
-
-        self.ensureLoginButton = QPushButton("Anmelden (falls nötig)")
-        self.ensureLoginButton.clicked.connect(lambda: webbrowser.open("https://launchpad.support.sap.com"))
         
         self.openAllNotesButton = QPushButton("Alle Notes anzeigen")
-        self.openAllNotesButton.clicked.connect(lambda: open_all_notes(self.results))
+        self.openAllNotesButton.clicked.connect(lambda: self.playwright_noteviewer(self.results))
 
         self.buttonRow = QHBoxLayout()
-        self.buttonRow.addWidget(self.ensureLoginButton)
         self.buttonRow.addWidget(self.openAllNotesButton)
         self.mainLayout.addLayout(self.buttonRow)
         self.setLayout(self.mainLayout)
@@ -341,53 +334,42 @@ class results_window(QDialog):
         self.openAllNotesButton.setFocus()
         self.openAllNotesButton.setDefault(True)
 
+    @asyncSlot()
+    async def playwright_noteviewer(self, notes):
+        async with async_playwright() as p:
+            # browser context instance is in window instance,
+            # so that it can be reused for multiple calls of playwright_noteviewer from ui
+            
+            # first checking if context has been set up; if not, run login once
+            if self.context is None:
+                chromepath = chromium_utils.check_browser_install()
+                browser = await p.chromium.launch(headless=False, executable_path=chromepath)
+                self.context = await browser.new_context()
+                login_page = await self.context.new_page()
+
+                await login_page.goto('http://launchpad.support.sap.com')
+
+                # username input
+                await login_page.locator("#j_username").fill(keyring.get_password("system", "launchpad_username"))
+                await login_page.locator("#j_username").press("Enter")
+
+                # password input
+                await login_page.locator("#j_password").fill(keyring.get_password("system", "launchpad_password"))
+                await login_page.locator("#j_password").press("Enter")
+
+                await login_page.close()
 
 
-
-def open_note(notenumber):
-    webbrowser.open("https://launchpad.support.sap.com/#/notes/"+str(notenumber))
-
-def open_all_notes(notes):
-    for note in notes:
-        open_note(note)
+            # opening all others in new tabs
+            await asyncio.gather(*[self.open_note(self.context, note) for note in notes])
 
 
+    async def open_note(self, context, note):
+        page = await context.new_page()
+        await page.goto(f"https://launchpad.support.sap.com/#/notes/{note}")
+        # wait up to 16.667 minutes :)
+        await page.wait_for_timeout(1000000)
 
-# langsam
-# from playwright.async_api import async_playwright
-# import asyncio
-# from scrape import check_browser_install
-
-# async def open_notes_playwright(notes):
-#     async with async_playwright() as p:
-#         chromepath = check_browser_install()
-
-#         browser = await p.chromium.launch(headless=True, executable_path=chromepath)
-#         context = await browser.new_context()
-#         login_page = await context.new_page()
-
-#         await login_page.goto('http://launchpad.support.sap.com')
-
-#         # username input
-#         await login_page.locator("#j_username").fill(keyring.get_password("system", "launchpad_username"))
-#         await login_page.locator("#j_username").press("Enter")
-
-#         # password input
-#         await login_page.locator("#j_password").fill(keyring.get_password("system", "launchpad_password"))
-#         await login_page.locator("#j_password").press("Enter")
-
-#         # reusing the login page
-#         # page.goto("https://launchpad.support.sap.com/#/notes/"+notes[0])
-#         # await login_page.close()
-
-
-#         # opening all others in new tabs
-#         await asyncio.gather(*[createpage(context, note) for note in notes])
-
-# async def createpage(context, note):
-#     page = await context.new_page()
-#     await page.goto("https://launchpad.support.sap.com/#/notes/"+str(note))
-#     await page.wait_for_timeout(100000)
 
 
 def delete_data_csv():
@@ -397,6 +379,8 @@ def delete_data_csv():
     if csv_path.exists():
         os.remove(csv_path)
 
-mw = mainWindow()
-mw.show()
-app.exec()
+
+
+
+if __name__ == "__main__":
+    main()
