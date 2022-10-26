@@ -120,7 +120,7 @@ class ScrapeThread(QThread):
                 self.progress_signal.emit(100)
                 self.result_signal.emit(notes_from_sap)
 
-                print("Done.")
+                print("Done.\n")
                 page.close()
                 context.close()
                 browser.close()
