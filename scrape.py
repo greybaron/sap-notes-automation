@@ -4,6 +4,7 @@ import stat
 import sys
 import traceback
 from pathlib import Path
+from xml import dom
 
 import keyring
 import requests
@@ -18,12 +19,14 @@ def check_browser_install():
     elif sys.platform == "darwin":
         chromepath = Path.home().joinpath("sap-automation-chromium/Chromium.app/Contents/MacOS/Chromium")
     else:
-        raise NotImplementedError(f"not running windows or macos, sys {sys.platform} not supported")
-    
-    if not chromepath.exists:
+        raise NotImplementedError(f"not running windows or macos, platform {sys.platform} not supported")
+
+    if not chromepath.exists():
         download_chromium(('win' if sys.platform == 'win32' else 'mac'))
     
     return chromepath
+
+
 
 
         
@@ -50,15 +53,36 @@ def download_chromium(platform):
     zip_path.write_bytes(zip_response.content)
 
 
-    # shutil.make_archive(Path.home().joinpath("sap-automation-chromium/chrome_mac"), "zip", Path.home().joinpath("sap-automation-chromium/Chromium.app"))
-    shutil.unpack_archive(zip_path, path)
-
     print("Download finished")
 
-    os.remove(zip_path)
+    
+    if platform == "win":
+        shutil.unpack_archive(zip_path, path)
 
+    # shutil.unpack screws up permissions and Gatekeeper probably fucks shit up as well,
+    # so using system unzip here
     if platform == "mac":
-        os.chmod(path.joinpath("Chromium.app/Contents/MacOS/chromium"), stat.S_IEXEC)
+        os.system(f'unzip "{zip_path}" -d "{path}"')
+    
+    os.remove(zip_path)
+    
+
+def getListOfFiles(path):
+    # create a list of all files, including those in subdirectories
+    # recursively calls itself when encountering a folder, and keeps looping until it hits no more subfolders in any given directory
+    nodesAtLevel = os.listdir(path)
+
+    files = []
+    # Iterate over all the entries
+    for subnode in nodesAtLevel:
+        newPath = os.path.join(path, subnode)
+        # If entry is a directory then get the list of files in this directory 
+        if os.path.isdir(newPath):
+            files += getListOfFiles(newPath)
+        else:
+            files.append(Path(newPath))
+    return files    
+
 
 
 

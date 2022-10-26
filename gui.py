@@ -42,9 +42,6 @@ class exception_viewer(QPlainTextEdit):
 
         self.show()
 
-        
-
-
 
 
 class accountSetupWindow(QWidget):
