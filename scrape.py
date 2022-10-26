@@ -50,7 +50,6 @@ class ScrapeThread(QThread):
                 print("Logging in")
                 page.goto('http://launchpad.support.sap.com')
 
-                print(f"lp: {page.url}")
 
                 # username input
                 uname_box = page.locator("#j_username")
@@ -88,7 +87,7 @@ class ScrapeThread(QThread):
                 datebox.click()
                 datebox.fill(self.formatted_date)
 
-                self.progress_signal.emit(65)
+                self.progress_signal.emit(70)
                 
                 # print("Working around SAP js pain")
                 # tries = 20
@@ -100,7 +99,7 @@ class ScrapeThread(QThread):
 
                 # clicking components to make sure js processing is done
                 page.get_by_role("textbox", name="Komponenten (exakt)").click()
-                self.progress_signal.emit(70)
+                self.progress_signal.emit(75)
 
 
 

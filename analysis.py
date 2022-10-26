@@ -1,8 +1,8 @@
 import openpyxl
 
 
-def analysis(system, india_xlsx_path, notes_from_sap):    
-
+def analysis(system, india_xlsx_path, notes_from_sap): 
+       
     notes_from_india = set()
 
     ### exc handling in GUI
@@ -13,8 +13,10 @@ def analysis(system, india_xlsx_path, notes_from_sap):
         if system in sheet:
             worksheet_india = workbook_india[sheet]
             break
+        # only reached if break never occured
+        raise IndexError(f"\n\nSheet '{system}' could not be found in workbook '{india_xlsx_path}'")
 
-    #############
+
 
     # get notes from India XSLX, save to set 'notes_from_india'
     for e in range (2, worksheet_india.max_row + 1):
