@@ -262,7 +262,9 @@ class mainWindow(QWidget):
                 # xlsx exists @ india_path → move to target_path (and rename)
                 self.prepare_output_dir(output_dir)
                 shutil.move(xlsx_india_path, xlsx_target_path)
-                self.a = alert("XLSX wurde verschoben", f'XLSX ist jetzt hier: "{xlsx_target_path}"')
+                
+                webbrowser.open(f"file://{output_dir}")
+                # self.a = alert("XLSX wurde verschoben", f'XLSX ist jetzt hier: "{xlsx_target_path}"')
 
         try:
             delete_data_csv()

@@ -45,17 +45,20 @@ class ScrapeThread(QThread):
                 browser = p.chromium.launch(headless=True, executable_path=chromepath)
                 context = browser.new_context()
                 page = context.new_page()
-                self.progress_signal.emit(20)
+                self.progress_signal.emit(25)
 
                 print("Logging in")
                 page.goto('http://launchpad.support.sap.com')
 
+                self.progress_signal.emit(30)
 
                 # username input
                 uname_box = page.locator("#j_username")
                 uname_box.click()
                 uname_box.fill(keyring.get_password("system", "launchpad_username"))
                 uname_box.press("Enter")
+
+                self.progress_signal.emit(35)
 
                 # password input
                 password_box = page.locator("#j_password")
@@ -67,7 +70,7 @@ class ScrapeThread(QThread):
                 if page.url[-14:] != '?redirect=true':
                     raise AuthenticationError(f"\n\nAccount username/Password is probably wrong. Expected URL ending with '?redirect=true'\nGot URL='{page.url}'")
 
-                self.progress_signal.emit(25)
+                self.progress_signal.emit(40)
 
                 print("Accessing Notes page")
                 # go to Notes url (components pre-filled)
@@ -75,7 +78,7 @@ class ScrapeThread(QThread):
                 page.goto(req_url)
 
 
-                self.progress_signal.emit(40)
+                self.progress_signal.emit(45)
 
                 print("Waiting for site load")
                 page.wait_for_load_state("networkidle")
