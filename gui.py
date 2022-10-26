@@ -1,4 +1,5 @@
 import asyncio
+import sys
 import os
 import shutil
 import traceback
@@ -9,9 +10,10 @@ from random import randint
 
 import keyring
 from playwright.async_api import async_playwright
-from PyQt6.QtGui import QFont
+from PyQt6.QtCore import QObject, pyqtSignal
+from PyQt6.QtGui import QFont, QTextCursor
 from PyQt6.QtWidgets import (QApplication, QComboBox, QDialog, QHBoxLayout,
-                             QLabel, QLineEdit, QMessageBox, QPlainTextEdit,
+                             QLabel, QLineEdit, QMessageBox, QPlainTextEdit, QTextEdit,
                              QProgressDialog, QPushButton, QScrollArea,
                              QVBoxLayout, QWidget)
 from qasync import QEventLoop, asyncSlot
@@ -94,9 +96,11 @@ class accountSetupWindow(QWidget):
 
 
         
+class Stream(QObject):
+    newText = pyqtSignal(str)
 
-
-
+    def write(self, text):
+        self.newText.emit(str(text))
 
 
 class mainWindow(QWidget):
@@ -105,7 +109,7 @@ class mainWindow(QWidget):
 
         # window bastelei
         self.setWindowTitle("SAP Hinweise")
-        self.setFixedSize(360, 200)
+        self.setFixedSize(360, 180)
 
         self.main_layout = QVBoxLayout()
         self.buttonLine0 = QHBoxLayout()
@@ -121,7 +125,8 @@ class mainWindow(QWidget):
         self.main_layout.addWidget(self.weekSelector)
 
 
-        self.main_layout.addStretch()
+        # self.main_layout.addStretch()
+        # self.main_layout.addSpacing(10)
 
 
         # self.prepareOutputButton = QPushButton("PDF-Verzeichnis vorbereiten...")
@@ -136,7 +141,8 @@ class mainWindow(QWidget):
 
         self.main_layout.addLayout(self.buttonLine0)
 
-        self.main_layout.addStretch()
+        # self.main_layout.addStretch()
+        self.main_layout.addSpacing(15)
 
         self.DECHATButton = QPushButton("DE && CH && AT")
         self.DECHATButton.clicked.connect(lambda: self.start_processing(self.possibleWeekChoices, self.weekSelector, "DE & CH & AT"))
@@ -161,10 +167,33 @@ class mainWindow(QWidget):
 
 
         self.main_layout.addLayout(self.buttonLine2)
+
+        # self.stdoutWidget = QPlainTextEdit()
+        # self.stdoutWidget.setReadOnly(True)
+        # self.main_layout.addWidget(self.stdoutWidget)
     
         self.setLayout(self.main_layout)
-
         self.loadWeekSelectorContent()
+
+        sys.stdout = Stream(newText=self.onUpdateText)
+
+        self.stdout_viewer = QTextEdit()
+        self.stdout_viewer.setDisabled(True)
+        self.stdout_viewer.moveCursor(QTextCursor.MoveOperation.Start)
+        self.stdout_viewer.ensureCursorVisible()
+        self.stdout_viewer.setLineWrapColumnOrWidth(500)
+        self.stdout_viewer.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap)
+
+    
+    def onUpdateText(self, text):
+        cursor = self.stdout_viewer.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+        cursor.insertText(text)
+        self.stdout_viewer.setTextCursor(cursor)
+        self.stdout_viewer.ensureCursorVisible()
+
+    def __del__(self):
+        sys.stdout = sys.__stdout__
 
 
     def loadWeekSelectorContent(self):
@@ -239,7 +268,10 @@ class mainWindow(QWidget):
 
 
     def start_processing(self, possibleWeekChoices, weekSelector, system):
+        self.main_layout.addWidget(self.stdout_viewer)
         
+        self.setFixedSize(360, 300)
+
         selection_data = possibleWeekChoices[weekSelector.currentIndex()]
 
         output_dir = Path.home().joinpath(f"Downloads/Ergebnis SAP Hinweise")
