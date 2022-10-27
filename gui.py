@@ -105,8 +105,18 @@ class Stream(QObject):
 
 
 class MainWindow(QWidget):
+    add_scrape_task_signal = pyqtSignal(str, str)
+
     def __init__(self):
         super().__init__()
+
+        # setting up browser async
+        self.browser_ready = False
+        self.NewScrapeThread = NewScrapeThread()
+        self.NewScrapeThread.browser_ready_signal.connect(self.set_browser_ready)
+        self.add_scrape_task_signal.connect(self.NewScrapeThread.add_task)
+        self.NewScrapeThread.start()
+
 
         # window bastelei
         self.setWindowTitle("SAP Hinweise")
@@ -173,8 +183,8 @@ class MainWindow(QWidget):
         self.stdout_viewer.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap)
         self.stdout_viewer.setFixedHeight(100)
         self.main_layout.addWidget(self.stdout_viewer)
-        sys.stdout = Stream(newText=self.on_update_text)
-        sys.stderr = Stream(newText=self.on_update_text)
+        # sys.stdout = Stream(newText=self.on_update_text)
+        # sys.stderr = Stream(newText=self.on_update_text)
 
 
         self.setLayout(self.main_layout)
@@ -186,21 +196,17 @@ class MainWindow(QWidget):
         
         # sizehint works on macos, but is a bit cramped (buttons are sized to text and therefore vary in width)
         if sys.platform == "darwin":
-            self.size_initial.setWidth(self.base_size.width()+70)
+            self.size_initial.setWidth(self.size_initial.width()+70)
         
         # self.with_stdout_size = self.base_size.setHeight(self.base_size.height()+80)
         # self.size_with_stdout = QSize(self.size_initial.width(), self.size_initial.height()+100)
 
         self.setFixedSize(self.size_initial)
 
-        self.NewScrapeThread = NewScrapeThread()
-        self.NewScrapeThread.browser_ready_signal.connect(self.browser_ready_state)
-        self.NewScrapeThread.start()
 
-    def browser_ready_state(self, state=None):
-        if state is not None:
-            self.browser_ready = state
-        return self.browser_ready
+    def set_browser_ready(self, state):
+        self.browser_ready = state
+
     
     # 'text' (~ a single line) is received from stdout and then streamed here
     def on_update_text(self, text):
@@ -280,12 +286,15 @@ class MainWindow(QWidget):
     #         self.stdout_viewer.setVisible(False)
     #         self.setFixedSize(self.size_initial)
 
-        
+
+    # def start_scraping(self, possible_week_choices, weekSelector, system):
+    #     selection_data = possible_week_choices[weekSelector.currentIndex()]
+    #     self.add_scrape_task_signal.emit(selection_data['formatted_date'], system)
+
+
 
     def start_processing(self, possible_week_choices, weekSelector, system):
-        # setting up stdout stream
-        self.set_stdoutviewer_enabled(True)
-
+        print(f"called SP for sys {system}")
         selection_data = possible_week_choices[weekSelector.currentIndex()]
 
         output_dir = Path.home().joinpath(f"Downloads/Ergebnis SAP Hinweise")
@@ -315,20 +324,24 @@ class MainWindow(QWidget):
         self.progressView = QProgressDialog()
         self.progressView.setFixedWidth(250)
         self.progressView.setWindowTitle("Hinweise werden abgerufen")
-        self.progressView.canceled.connect(self.cancel_scraping)
+        self.progressView.setCancelButton(None)
+        # self.progressView.canceled.connect(self.cancel_scraping)
         self.progressView.show()
 
-        self.p_thread = ScrapeThread(selection_data['formatted_date'], system)
-        self.p_thread.progress_signal.connect(self.progressView.setValue)
-        self.p_thread.result_signal.connect(lambda notes_from_sap: self.start_analysis(system, xlsx_target_path, notes_from_sap))
-        # self.p_thread.result_signal.connect(self.startAnalysis)
-        self.p_thread.error_signal.connect(self.show_scraping_error)
-        self.p_thread.start()
+
+        self.NewScrapeThread.progress_signal.connect(self.progressView.setValue)
+        self.NewScrapeThread.result_signal.connect(lambda notes_from_sap: self.start_analysis(system, xlsx_target_path, notes_from_sap))
+        self.NewScrapeThread.error_signal.connect(self.show_scraping_error)
+
+        # sending the task to NewScrapeThread queue
+        self.add_scrape_task_signal.emit(selection_data['formatted_date'], system)
+
+
 
         # has to be declared before use
     def start_analysis(self, system, xlsx_india, notes_from_sap):
-        self.set_stdoutviewer_enabled(False)
-        self.resize(self.sizeHint())
+        print(f"called SA for sys {system}")
+        # self.resize(self.sizeHint())
 
         try:
             only_in_sap, only_in_xlsx = analysis(system, xlsx_india, notes_from_sap)
@@ -348,7 +361,7 @@ class MainWindow(QWidget):
         self.excv = ExceptionViewer("Scraping failed", error)
     
     def cancel_scraping(self):
-        self.set_stdoutviewer_enabled(False)
+        # self.set_stdoutviewer_enabled(False)
         print(self.sizeHint())
         self.resize(self.sizeHint())
         self.p_thread.terminate()
@@ -403,7 +416,6 @@ class ResultsWindow(QDialog):
             self.openMissingNotesButton.clicked.connect(lambda: self.playwright_noteviewer(self.only_in_sap))
             self.mainLayout.addWidget(self.openMissingNotesButton)
 
-
         if len(only_in_xlsx) > 0:
             self.mainLayout.addWidget(QLabel("Unbekannte Hinweise:"))
             
@@ -430,10 +442,12 @@ class ResultsWindow(QDialog):
             self.openExcessNotesButton.clicked.connect(lambda: self.playwright_noteviewer(self.only_in_xlsx))
             self.mainLayout.addWidget(self.openExcessNotesButton)
 
-        self.setLayout(self.mainLayout)
 
-        self.openMissingNotesButton.setFocus()
-        self.openMissingNotesButton.setDefault(True)
+        if len(only_in_sap) != 0 and len(only_in_xlsx) == 0:
+            self.openMissingNotesButton.setFocus()
+            self.openMissingNotesButton.setDefault(True)
+
+        self.setLayout(self.mainLayout)
 
     @asyncSlot()
     async def playwright_noteviewer(self, notes):
