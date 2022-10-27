@@ -70,7 +70,7 @@ class NewScrapeThread(QThread):
 
                 self.progress_signal.emit(45)
 
-                print("Waiting for site load")
+                print("Waiting for site to load")
                 self.page.wait_for_load_state("networkidle")
 
                 self.progress_signal.emit(85)
