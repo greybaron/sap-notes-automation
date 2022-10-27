@@ -94,7 +94,6 @@ class NewScrapeThread(QThread):
             time.sleep(0.1)
 
     def run_task(self, formatted_date, system_readable):
-
         self.progress_signal.emit(20)
 
         if   system_readable == 'DE & CH & AT':

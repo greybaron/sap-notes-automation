@@ -342,7 +342,11 @@ class MainWindow(QWidget):
         self.set_UI_disabled(False)
 
     def show_scraping_error(self, error):
-        self.progressView.close()
+        try:
+            self.progressView.close()
+        except:
+            pass
+        
         self.excv = ExceptionViewer("Scraping failed", error)
 
 
@@ -391,7 +395,7 @@ class ResultsWindow(QDialog):
             self.mainLayout.addWidget(self.openMissingNotesButton)
 
         if len(only_in_xlsx) > 0:
-            self.mainLayout.addWidget(QLabel("Unbekannte Hinweise:\n(Nur in XLSX vorhanden)"))
+            self.mainLayout.addWidget(QLabel("Fragwürdige Hinweise:\n(Nur in XLSX vorhanden)"))
             
             self.OnlyXLSXScrollView = QScrollArea()
             self.OnlyXLSXScrollContent = QWidget()
