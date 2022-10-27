@@ -13,7 +13,6 @@ import chromium_utils
 
 class NewScrapeThread(QThread):
 
-    browser_ready_signal = pyqtSignal(bool)
     progress_signal = pyqtSignal(int)
     result_signal = pyqtSignal(set)
     error_signal = pyqtSignal(str)
@@ -21,8 +20,8 @@ class NewScrapeThread(QThread):
 
 
     def __init__(self):
-        self.browser_ready = False
         self.tasks = list()
+        
         super().__init__()
 
     def run(self):
@@ -30,7 +29,7 @@ class NewScrapeThread(QThread):
             chromepath = chromium_utils.check_browser_install()
 
             with sync_playwright() as p:
-        
+                print("You don't need to wait for this to finish\n")
                 print("Starting browser backend")
 
                 browser = p.chromium.launch(headless=True, executable_path=chromepath)
@@ -75,10 +74,6 @@ class NewScrapeThread(QThread):
                 self.page.wait_for_load_state("networkidle")
 
                 self.progress_signal.emit(85)
-
-                self.browser_ready = True
-                self.browser_ready_signal.emit(self.browser_ready)
-                print("Browser is ready.\n")
                 
                 # i guess this is an event loop now but no way is this how you're supposed to do it
                 self.check_tasks()
@@ -91,12 +86,12 @@ class NewScrapeThread(QThread):
         self.tasks.append((formatted_date, system))
     
     def check_tasks(self):
+        print("Browser is ready.\n")
         while True:
             if len(self.tasks) != 0:
-                print(f"there are {len(self.tasks)} tasks")
                 formatted_date, system = self.tasks.pop(0)
                 self.run_task(formatted_date, system)
-            time.sleep(1)
+            time.sleep(0.1)
 
     def run_task(self, formatted_date, system_readable):
 
@@ -140,7 +135,6 @@ class NewScrapeThread(QThread):
 
 
         self.progress_signal.emit(100)
-        print(f"emitting for sys {system_readable}")
         self.result_signal.emit(notes_from_sap)
 
 
