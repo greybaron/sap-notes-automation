@@ -11,7 +11,7 @@ from random import randint
 
 import keyring
 from playwright.async_api import async_playwright
-from PyQt6.QtCore import QObject, pyqtSignal
+from PyQt6.QtCore import QObject, pyqtSignal, QSize
 from PyQt6.QtGui import QFont, QTextCursor
 from PyQt6.QtWidgets import (QApplication, QComboBox, QDialog, QHBoxLayout,
                              QLabel, QLineEdit, QMessageBox, QPlainTextEdit, QTextEdit,
@@ -21,7 +21,7 @@ from qasync import QEventLoop, asyncSlot
 
 import chromium_utils
 from analysis import analysis
-from scrape import ScrapeThread
+from scrape import NewScrapeThread
 
 
 def main():
@@ -131,8 +131,8 @@ class MainWindow(QWidget):
 
 
         # self.uselessButton = QPushButton("PDF-Verzeichnis vorbereiten...")
-        self.uselessButton = QPushButton("2% chance")
-        self.uselessButton.clicked.connect(self.confirm_prepare_output_dir)
+        self.uselessButton = QPushButton("3% chance")
+        self.uselessButton.clicked.connect(self.komplett_useless)
 
         self.AccSetupButton = QPushButton("Launchpad-Account...")
         self.AccSetupButton.clicked.connect(self.startAccountSetup)
@@ -144,26 +144,26 @@ class MainWindow(QWidget):
         self.main_layout.addSpacing(10)
 
         self.DECHATButton = QPushButton("DE && CH && AT")
-        self.DECHATButton.clicked.connect(lambda: self.start_processing(self.possibleWeekChoices, self.weekSelector, "DE & CH & AT"))
+        self.DECHATButton.clicked.connect(lambda: self.start_processing(self.possible_week_choices, self.weekSelector, "DE & CH & AT"))
 
         self.ReisemanagementButton = QPushButton("Reisemanagement")
-        self.ReisemanagementButton.clicked.connect(lambda: self.start_processing(self.possibleWeekChoices, self.weekSelector, "Reisemanagement"))
+        self.ReisemanagementButton.clicked.connect(lambda: self.start_processing(self.possible_week_choices, self.weekSelector, "Reisemanagement"))
 
         self.buttonLine1.addWidget(self.DECHATButton)
         self.buttonLine1.addWidget(self.ReisemanagementButton)
         self.main_layout.addLayout(self.buttonLine1)
 
         self.ESSButton = QPushButton("ESS")
-        self.ESSButton.clicked.connect(lambda: self.start_processing(self.possibleWeekChoices, self.weekSelector, "ESS"))
+        self.ESSButton.clicked.connect(lambda: self.start_processing(self.possible_week_choices, self.weekSelector, "ESS"))
 
         self.SuccButton = QPushButton("SuccessFactors")
-        self.SuccButton.clicked.connect(lambda: self.start_processing(self.possibleWeekChoices, self.weekSelector, "Successfactors"))
+        self.SuccButton.clicked.connect(lambda: self.start_processing(self.possible_week_choices, self.weekSelector, "Successfactors"))
 
         self.buttonLine2.addWidget(self.ESSButton)
         self.buttonLine2.addWidget(self.SuccButton)
         self.main_layout.addLayout(self.buttonLine2)
 
-        # sys.stdout = Stream(newText=self.onUpdateText)
+        # sys.stdout = Stream(newText=self.on_update_text)
         # streaming starts only when stdout_viewer is visible
         self.stdout_viewer = QTextEdit()
         self.stdout_viewer.setDisabled(True)
@@ -171,30 +171,39 @@ class MainWindow(QWidget):
         self.stdout_viewer.ensureCursorVisible()
         self.stdout_viewer.setLineWrapColumnOrWidth(500)
         self.stdout_viewer.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap)
+        self.stdout_viewer.setFixedHeight(100)
         self.main_layout.addWidget(self.stdout_viewer)
-        self.stdout_viewer.hide()
+        sys.stdout = Stream(newText=self.on_update_text)
+        sys.stderr = Stream(newText=self.on_update_text)
 
 
         self.setLayout(self.main_layout)
-        self.loadWeekSelectorContent()
+        self.load_week_selector_content()
 
 
-        self.base_size = self.sizeHint()
+        # sizehint calculates the minimum size so that all contents fit
+        self.size_initial = self.sizeHint()
         
-        #
+        # sizehint works on macos, but is a bit cramped (buttons are sized to text and therefore vary in width)
         if sys.platform == "darwin":
-            self.base_size.setWidth(self.base_size.width()+70)
-
-            
+            self.size_initial.setWidth(self.base_size.width()+70)
         
-        print(self.base_size)
+        # self.with_stdout_size = self.base_size.setHeight(self.base_size.height()+80)
+        # self.size_with_stdout = QSize(self.size_initial.width(), self.size_initial.height()+100)
 
-        self.setFixedSize(self.base_size)
+        self.setFixedSize(self.size_initial)
 
-        # self.setFixedSize(self.sizeHint().grownBy(QSize)
+        self.NewScrapeThread = NewScrapeThread()
+        self.NewScrapeThread.browser_ready_signal.connect(self.browser_ready_state)
+        self.NewScrapeThread.start()
+
+    def browser_ready_state(self, state=None):
+        if state is not None:
+            self.browser_ready = state
+        return self.browser_ready
     
     # 'text' (~ a single line) is received from stdout and then streamed here
-    def onUpdateText(self, text):
+    def on_update_text(self, text):
         cursor = self.stdout_viewer.textCursor()
         cursor.movePosition(QTextCursor.MoveOperation.End)
         # text is actually written here
@@ -203,17 +212,17 @@ class MainWindow(QWidget):
         self.stdout_viewer.ensureCursorVisible()
 
 
-    def loadWeekSelectorContent(self):
+    def load_week_selector_content(self):
         # filling the KW selector with 20 weeks (beginning at last week)
 
         monate = ["Jan.", "Feb.", "März", "Apr.", "Mai", "Juni", "Juli", "Aug.", "Sept.", "Okt.", "Nov.", "Dez."]
 
-        self.possibleWeekChoices = []
+        self.possible_week_choices = []
 
         for i in range(100):
-            wasLetzteWoche = date.today() - timedelta(weeks = 1+i)
-            kw = wasLetzteWoche.isocalendar().week
-            year = wasLetzteWoche.isocalendar().year
+            was_letzte_woche = date.today() - timedelta(weeks = 1+i)
+            kw = was_letzte_woche.isocalendar().week
+            year = was_letzte_woche.isocalendar().year
 
             # those -1s because arrays start at a number between 1 and stromboli
             start_formatted_date = monate[(date.fromisocalendar(year, kw, 1).month)-1] + " " + str(date.fromisocalendar(year, kw, 1).day) + ", " + str(date.fromisocalendar(year, kw, 1).year)
@@ -222,7 +231,7 @@ class MainWindow(QWidget):
             formatted_date = f"{start_formatted_date} - {end_formatted_date}"
             
 
-            self.possibleWeekChoices.append({
+            self.possible_week_choices.append({
                 "formatted_date": formatted_date,
                 "kw": kw,
                 "year": year
@@ -230,7 +239,7 @@ class MainWindow(QWidget):
             self.weekSelector.addItem(f"KW {kw}: {formatted_date}")
 
     def prepare_output_dir(self, output_dir):
-        selected_date = self.possibleWeekChoices[self.weekSelector.currentIndex()]
+        selected_date = self.possible_week_choices[self.weekSelector.currentIndex()]
         year = selected_date['year']
         kw = selected_date['kw']
 
@@ -246,31 +255,38 @@ class MainWindow(QWidget):
             open(Path.joinpath(output_dir, f"SAP Hinweise {name} KW {kw}_{year}.pdf"), 'w').close()
 
 
-    def confirm_prepare_output_dir(self):
-        if randint(0, 49) == 0:
+    def komplett_useless(self):
+        rand = randint(0, 66)
+        # 2 cases out of 67 ≅ 3% chance
+        if rand == 0:
             webbrowser.open("https://pbs.twimg.com/media/FYfy7mGUIAEBMVZ?format=jpg&name=small")
+        elif rand == 1:
+            webbrowser.open("https://i.imgflip.com/6urpor.png")
     
 
     def startAccountSetup(self):
         self.AccountSetupWindow = AccountSetupWindow()
         self.AccountSetupWindow.show()
 
-    def set_stdoutviewer_enabled(self, enabled):
-        if enabled:
-            self.stdout_viewer.show()
-            sys.stdout = Stream(newText=self.onUpdateText)
-            sys.stderr = Stream(newText=self.onUpdateText)
-        else:
-            sys.stdout = sys.__stdout__
-            sys.stderr = sys.__stderr__
-            self.stdout_viewer.hide()
+    # def set_stdoutviewer_enabled(self, enabled):
+    #     if enabled:
+    #         self.stdout_viewer.setVisible(True)
+    #         sys.stdout = Stream(newText=self.on_update_text)
+    #         sys.stderr = Stream(newText=self.on_update_text)
+    #         self.setFixedSize(self.size_with_stdout)
+    #     else:
+    #         sys.stdout = sys.__stdout__
+    #         sys.stderr = sys.__stderr__
+    #         self.stdout_viewer.setVisible(False)
+    #         self.setFixedSize(self.size_initial)
+
         
 
-    def start_processing(self, possibleWeekChoices, weekSelector, system):
+    def start_processing(self, possible_week_choices, weekSelector, system):
         # setting up stdout stream
         self.set_stdoutviewer_enabled(True)
 
-        selection_data = possibleWeekChoices[weekSelector.currentIndex()]
+        selection_data = possible_week_choices[weekSelector.currentIndex()]
 
         output_dir = Path.home().joinpath(f"Downloads/Ergebnis SAP Hinweise")
 
@@ -295,12 +311,6 @@ class MainWindow(QWidget):
                 
                 webbrowser.open(f"file://{output_dir}")
                 # self.a = Alert("XLSX wurde verschoben", f'XLSX ist jetzt hier: "{xlsx_target_path}"')
-
-        try:
-            delete_data_csv()
-        except Exception:
-            self.excv = ExceptionViewer("Deleting temp data failed", traceback.format_exc())
-            return
             
         self.progressView = QProgressDialog()
         self.progressView.setFixedWidth(250)
@@ -321,12 +331,12 @@ class MainWindow(QWidget):
         self.resize(self.sizeHint())
 
         try:
-            results = analysis(system, xlsx_india, notes_from_sap)
+            only_in_sap, only_in_xlsx = analysis(system, xlsx_india, notes_from_sap)
 
-            if len(results) == 0:
+            if len(only_in_sap) == 0 and len(only_in_xlsx) == 0:
                 self.a = Alert(system, "Keine fehlenden Hinweise")
             else:
-                self.results_window = ResultsWindow(system, results)
+                self.results_window = ResultsWindow(system, only_in_sap, only_in_xlsx)
                 self.results_window.show()
             
         except Exception:
@@ -351,48 +361,79 @@ class MainWindow(QWidget):
 
 
 class ResultsWindow(QDialog):
-    def __init__(self, system, results):
+    def __init__(self, system, only_in_sap, only_in_xlsx):
         # importing to instance so that playwright note opener has access
-        self.results = results
+        self.only_in_sap = only_in_sap
+        self.only_in_xlsx = only_in_xlsx
+
+        # this var will store the reference to the playwright browser context
         self.context = None
 
         super().__init__()
-        self.setWindowTitle(f"{system}  —  Ergebnisse")
+        self.setWindowTitle(system)
         # self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowStaysOnTopHint)
 
         self.mainLayout = QVBoxLayout()
-        self.mainLayout.addWidget(QLabel("Fehlende Hinweise:"))
         
-
-        self.scrollView = QScrollArea()
-        self.scrollContent = QWidget()
-        self.scrollContentLayout = QVBoxLayout()
-
-        for notenumber in results:
-            individualNoteButton = QPushButton(str(notenumber))
-            # i'm not sure exactly what lambda state does, but otherwise all buttons call
-            # opennote with the same argument/number, so i guess it keeps the state of notenumber inside x
-            individualNoteButton.clicked.connect(lambda state, x=notenumber: self.playwright_noteviewer({x}))
-
-            self.scrollContentLayout.addWidget(individualNoteButton)    
-
-        self.scrollContent.setLayout(self.scrollContentLayout)
-
-        self.scrollView.setWidgetResizable(True)
-        self.scrollView.setWidget(self.scrollContent)
-
-        self.mainLayout.addWidget(self.scrollView)
         
-        self.openAllNotesButton = QPushButton("Alle Notes anzeigen")
-        self.openAllNotesButton.clicked.connect(lambda: self.playwright_noteviewer(self.results))
+        # this isn't very nice, this should be a function or something and not basically just repeated
+        if len(only_in_sap) > 0:
+            self.mainLayout.addWidget(QLabel("Fehlende Hinweise:"))
+            
+            self.OnlySapScrollView = QScrollArea()
+            self.OnlySapScrollContent = QWidget()
+            self.OnlySapScrollContentLayout = QVBoxLayout()
+            
+            for notenumber in only_in_sap:
+                individualNoteButton = QPushButton(str(notenumber))
+                # i'm not sure exactly what lambda state does, but otherwise all buttons call
+                # opennote with the same argument/number, so i guess it keeps the state of notenumber inside x
+                individualNoteButton.clicked.connect(lambda state, x=notenumber: self.playwright_noteviewer({x}))
 
-        self.buttonRow = QHBoxLayout()
-        self.buttonRow.addWidget(self.openAllNotesButton)
-        self.mainLayout.addLayout(self.buttonRow)
+                self.OnlySapScrollContentLayout.addWidget(individualNoteButton)    
+
+            self.OnlySapScrollContent.setLayout(self.OnlySapScrollContentLayout)
+
+            self.OnlySapScrollView.setWidgetResizable(True)
+            self.OnlySapScrollView.setWidget(self.OnlySapScrollContent)
+
+            self.mainLayout.addWidget(self.OnlySapScrollView)
+        
+            self.openMissingNotesButton = QPushButton("Fehlende Notes anzeigen")
+            self.openMissingNotesButton.clicked.connect(lambda: self.playwright_noteviewer(self.only_in_sap))
+            self.mainLayout.addWidget(self.openMissingNotesButton)
+
+
+        if len(only_in_xlsx) > 0:
+            self.mainLayout.addWidget(QLabel("Unbekannte Hinweise:"))
+            
+            self.OnlyXLSXScrollView = QScrollArea()
+            self.OnlyXLSXScrollContent = QWidget()
+            self.OnlyXLSXScrollContentLayout = QVBoxLayout()
+            
+            for notenumber in only_in_xlsx:
+                individualNoteButton = QPushButton(str(notenumber))
+                # i'm not sure exactly what lambda state does, but otherwise all buttons call
+                # opennote with the same argument/number, so i guess it keeps the state of notenumber inside x
+                individualNoteButton.clicked.connect(lambda state, x=notenumber: self.playwright_noteviewer({x}))
+
+                self.OnlyXLSXScrollContentLayout.addWidget(individualNoteButton)    
+
+            self.OnlyXLSXScrollContent.setLayout(self.OnlyXLSXScrollContentLayout)
+
+            self.OnlyXLSXScrollView.setWidgetResizable(True)
+            self.OnlyXLSXScrollView.setWidget(self.OnlyXLSXScrollContent)
+
+            self.mainLayout.addWidget(self.OnlyXLSXScrollView)
+        
+            self.openExcessNotesButton = QPushButton("Unbekannte Notes anzeigen")
+            self.openExcessNotesButton.clicked.connect(lambda: self.playwright_noteviewer(self.only_in_xlsx))
+            self.mainLayout.addWidget(self.openExcessNotesButton)
+
         self.setLayout(self.mainLayout)
 
-        self.openAllNotesButton.setFocus()
-        self.openAllNotesButton.setDefault(True)
+        self.openMissingNotesButton.setFocus()
+        self.openMissingNotesButton.setDefault(True)
 
     @asyncSlot()
     async def playwright_noteviewer(self, notes):
@@ -421,25 +462,23 @@ class ResultsWindow(QDialog):
 
 
             # opening all others in new tabs
-            await asyncio.gather(*[self.open_note(self.context, note) for note in notes])
+            # await asyncio.gather(*[self.open_note(self.context, note) for note in notes])
+
+            for i in range(0, len(notes), 4):
+                await asyncio.gather(*[self.open_note(self.context, note) for note in list(notes)[i:i+4]])
+                time.sleep(1)
 
 
     async def open_note(self, context, note):
         page = await context.new_page()
-        await page.goto(f"https://launchpad.support.sap.com/#/notes/{note}")
+        note_page_reached = False
+
+        while not note_page_reached:
+            await page.goto(f"https://launchpad.support.sap.com/#/notes/{note}")
+            print(page.url)
+            note_page_reached = True
         # wait up to 16.667 minutes :)
         await page.wait_for_timeout(1000000)
-
-
-
-def delete_data_csv():
-    # Exception Handling is now in GUI
-    csv_path = Path.home().joinpath("Downloads/data.csv")
-
-    if csv_path.exists():
-        os.remove(csv_path)
-
-
 
 
 if __name__ == "__main__":

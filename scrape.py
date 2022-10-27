@@ -10,6 +10,76 @@ import chromium_utils
 
 
 
+class NewScrapeThread(QThread):
+
+    browser_ready_signal = pyqtSignal(bool)
+    progress_signal = pyqtSignal(int)
+    result_signal = pyqtSignal(set)
+    error_signal = pyqtSignal(str)
+
+    def __init__(self):
+        super().__init__()
+
+
+    def run(self):
+        try:
+            chromepath = chromium_utils.check_browser_install()
+
+            with sync_playwright() as p:
+        
+                print("Starting browser backend")
+
+                browser = p.chromium.launch(headless=True, executable_path=chromepath)
+                context = browser.new_context()
+                page = context.new_page()
+                self.progress_signal.emit(20)
+
+                print("Logging in")
+                page.goto('http://launchpad.support.sap.com')
+
+                self.progress_signal.emit(25)
+
+                # username input
+                uname_box = page.locator("#j_username")
+                uname_box.click()
+                uname_box.fill(keyring.get_password("system", "launchpad_username"))
+                uname_box.press("Enter")
+
+                self.progress_signal.emit(40)
+
+                # password input
+                password_box = page.locator("#j_password")
+                password_box.click()
+                password_box.fill(keyring.get_password("system", "launchpad_password"))
+                password_box.press("Enter")
+
+                # on auth success, this would be the next url
+                if page.url[-14:] != '?redirect=true':
+                    raise AuthenticationError(f"\n\nAccount username/Password is probably wrong. Expected URL ending with '?redirect=true'\nGot URL='{page.url}'")
+
+                self.progress_signal.emit(43)
+
+                print("Accessing Notes page")
+                # go to Notes url (components pre-filled)
+                req_url = f"https://launchpad.support.sap.com/#/mynotes?tab=Search"
+                page.goto(req_url)
+
+
+                self.progress_signal.emit(45)
+
+                print("Waiting for site load")
+                page.wait_for_load_state("networkidle")
+
+                self.progress_signal.emit(85)
+
+                self.browser_ready_signal.emit(True)
+                print("Browser is ready.\n")
+
+        except Exception:
+            self.error_signal.emit(traceback.format_exc())
+
+
+
 class ScrapeThread(QThread):
 
     progress_signal = pyqtSignal(int)
@@ -45,12 +115,12 @@ class ScrapeThread(QThread):
                 browser = p.chromium.launch(headless=True, executable_path=chromepath)
                 context = browser.new_context()
                 page = context.new_page()
-                self.progress_signal.emit(25)
+                self.progress_signal.emit(20)
 
                 print("Logging in")
                 page.goto('http://launchpad.support.sap.com')
 
-                self.progress_signal.emit(30)
+                self.progress_signal.emit(25)
 
                 # username input
                 uname_box = page.locator("#j_username")
@@ -58,7 +128,7 @@ class ScrapeThread(QThread):
                 uname_box.fill(keyring.get_password("system", "launchpad_username"))
                 uname_box.press("Enter")
 
-                self.progress_signal.emit(35)
+                self.progress_signal.emit(40)
 
                 # password input
                 password_box = page.locator("#j_password")
@@ -70,7 +140,7 @@ class ScrapeThread(QThread):
                 if page.url[-14:] != '?redirect=true':
                     raise AuthenticationError(f"\n\nAccount username/Password is probably wrong. Expected URL ending with '?redirect=true'\nGot URL='{page.url}'")
 
-                self.progress_signal.emit(40)
+                self.progress_signal.emit(43)
 
                 print("Accessing Notes page")
                 # go to Notes url (components pre-filled)
@@ -83,6 +153,7 @@ class ScrapeThread(QThread):
                 print("Waiting for site load")
                 page.wait_for_load_state("networkidle")
 
+                self.progress_signal.emit(85)
                 # enter date since SAP is too incompetent to correctly parse it from url
                 # filling the "date box" with a dummy string and wait until it is empty
                 # since the sites' JS is cool and clears it while init'ing the page
@@ -90,7 +161,7 @@ class ScrapeThread(QThread):
                 datebox.click()
                 datebox.fill(self.formatted_date)
 
-                self.progress_signal.emit(70)
+                self.progress_signal.emit(90)
                 
                 # print("Working around SAP js pain")
                 # tries = 20
@@ -102,22 +173,20 @@ class ScrapeThread(QThread):
 
                 # clicking components to make sure js processing is done
                 page.get_by_role("textbox", name="Komponenten (exakt)").click()
-                self.progress_signal.emit(75)
-
-
+                
 
                 print("Sending form request")
                 page.locator("button:has-text(\"Start\")").click()
-                self.progress_signal.emit(80)
+
+                self.progress_signal.emit(90)
 
 
                 print("Sending CSV request")
                 # request csv
                 with page.expect_download() as download_info:
                     page.locator("text=Liste als CSV-Datei exportierenListe als CSV-Datei exportieren").click()
-                    self.progress_signal.emit(90)
-
-
+                
+                self.progress_signal.emit(95)
                 notes_from_sap = read_csv(download_info.value.path())
 
                 self.progress_signal.emit(100)
@@ -130,6 +199,7 @@ class ScrapeThread(QThread):
 
         except Exception:
             self.error_signal.emit(traceback.format_exc())
+
 
 
 def read_csv(csv_path):
