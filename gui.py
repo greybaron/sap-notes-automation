@@ -450,11 +450,11 @@ class ResultsWindow(QDialog):
 
 
             # opening all others in new tabs
-            # await asyncio.gather(*[self.open_note(self.context, note) for note in notes])
+            await asyncio.gather(*[self.open_note(self.context, note) for note in notes])
 
-            for i in range(0, len(notes), 4):
-                await asyncio.gather(*[self.open_note(self.context, note) for note in list(notes)[i:i+4]])
-                time.sleep(1)
+            # for i in range(0, len(notes), 4):
+            #     await asyncio.gather(*[self.open_note(self.context, note) for note in list(notes)[i:i+4]])
+            #     time.sleep(1)
 
 
     async def open_note(self, context, note):
@@ -464,7 +464,13 @@ class ResultsWindow(QDialog):
         # doesnt work right now
         while not note_page_reached:
             await page.goto(f"https://launchpad.support.sap.com/#/notes/{note}")
-            note_page_reached = True
+            await page.wait_for_load_state("networkidle", timeout=0)
+            if page.url == f"https://launchpad.support.sap.com/#/notes/{note}":
+                note_page_reached = True
+            else:
+                await page.close()
+                await self.open_note(context, note)
+                
         # wait up to 16.667 minutes :)
         await page.wait_for_timeout(1000000)
 
