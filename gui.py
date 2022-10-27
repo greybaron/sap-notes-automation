@@ -417,7 +417,7 @@ class ResultsWindow(QDialog):
             self.mainLayout.addWidget(self.openExcessNotesButton)
 
 
-        if len(only_in_sap) != 0 and len(only_in_xlsx) == 0:
+        if len(only_in_sap) != 0:
             self.openMissingNotesButton.setFocus()
             self.openMissingNotesButton.setDefault(True)
 
