@@ -117,6 +117,9 @@ class MainWindow(QWidget):
         self.add_scrape_task_signal.connect(self.NewScrapeThread.add_task)
         self.NewScrapeThread.start()
 
+        # setting up browser signals
+        self.NewScrapeThread.result_signal.connect(self.start_analysis)
+        self.NewScrapeThread.error_signal.connect(self.show_scraping_error)
 
         # window bastelei
         self.setWindowTitle("SAP Hinweise")
@@ -288,19 +291,29 @@ class MainWindow(QWidget):
 
 
     # def start_scraping(self, possible_week_choices, weekSelector, system):
-    #     selection_data = possible_week_choices[weekSelector.currentIndex()]
-    #     self.add_scrape_task_signal.emit(selection_data['formatted_date'], system)
+    #     selection_date = possible_week_choices[weekSelector.currentIndex()]
+    #     self.add_scrape_task_signal.emit(selection_date['formatted_date'], system)
 
+    def set_UI_disabled(self, state):
+        self.weekSelectorLabel.setDisabled(state)
+        self.weekSelector.setDisabled(state)
+        self.uselessButton.setDisabled(state)
+        self.AccSetupButton.setDisabled(state)
+        self.DECHATButton.setDisabled(state)
+        self.ReisemanagementButton.setDisabled(state)
+        self.ESSButton.setDisabled(state)
+        self.SuccButton.setDisabled(state)
 
 
     def start_processing(self, possible_week_choices, weekSelector, system):
         print(f"called SP for sys {system}")
-        selection_data = possible_week_choices[weekSelector.currentIndex()]
+
+        selection_date = possible_week_choices[weekSelector.currentIndex()]
 
         output_dir = Path.home().joinpath(f"Downloads/Ergebnis SAP Hinweise")
 
-        xlsx_india_path = Path.home().joinpath(f"Downloads/SAP-Notes Week {selection_data['kw']} -{selection_data['year']}.xlsx")
-        xlsx_target_path = output_dir.joinpath(f"SAP Hinweise KW {selection_data['kw']}_{selection_data['year']}.xlsx")
+        xlsx_india_path = Path.home().joinpath(f"Downloads/SAP-Notes Week {selection_date['kw']} -{selection_date['year']}.xlsx")
+        xlsx_target_path = output_dir.joinpath(f"SAP Hinweise KW {selection_date['kw']}_{selection_date['year']}.xlsx")
 
 
         if keyring.get_password("system", "launchpad_username") is None or keyring.get_password("system", "launchpad_password") is None:
@@ -320,7 +333,13 @@ class MainWindow(QWidget):
                 
                 webbrowser.open(f"file://{output_dir}")
                 # self.a = Alert("XLSX wurde verschoben", f'XLSX ist jetzt hier: "{xlsx_target_path}"')
-            
+        
+        # setting up references for result signal callback
+        self.system = system
+        self.xlsx_target_path = xlsx_target_path
+
+        self.set_UI_disabled(True)
+
         self.progressView = QProgressDialog()
         self.progressView.setFixedWidth(250)
         self.progressView.setWindowTitle("Hinweise werden abgerufen")
@@ -328,33 +347,31 @@ class MainWindow(QWidget):
         # self.progressView.canceled.connect(self.cancel_scraping)
         self.progressView.show()
 
-
         self.NewScrapeThread.progress_signal.connect(self.progressView.setValue)
-        self.NewScrapeThread.result_signal.connect(lambda notes_from_sap: self.start_analysis(system, xlsx_target_path, notes_from_sap))
-        self.NewScrapeThread.error_signal.connect(self.show_scraping_error)
 
         # sending the task to NewScrapeThread queue
-        self.add_scrape_task_signal.emit(selection_data['formatted_date'], system)
+        self.add_scrape_task_signal.emit(selection_date['formatted_date'], system)
 
 
 
         # has to be declared before use
-    def start_analysis(self, system, xlsx_india, notes_from_sap):
-        print(f"called SA for sys {system}")
+    def start_analysis(self, notes_from_sap):# system, xlsx_india, notes_from_sap):
+        print(f"called SA for sys {self.system}")
         # self.resize(self.sizeHint())
 
         try:
-            only_in_sap, only_in_xlsx = analysis(system, xlsx_india, notes_from_sap)
+            only_in_sap, only_in_xlsx = analysis(self.system, self.xlsx_target_path, notes_from_sap)
 
             if len(only_in_sap) == 0 and len(only_in_xlsx) == 0:
-                self.a = Alert(system, "Keine fehlenden Hinweise")
+                self.a = Alert(self.system, "Keine fehlenden Hinweise")
             else:
-                self.results_window = ResultsWindow(system, only_in_sap, only_in_xlsx)
+                self.results_window = ResultsWindow(self.system, only_in_sap, only_in_xlsx)
                 self.results_window.show()
-            
+          
         except Exception:
             self.excv = ExceptionViewer("Analysis failed", traceback.format_exc())
-            return
+            
+        self.set_UI_disabled(False)
 
     def show_scraping_error(self, error):
         self.progressView.close()
