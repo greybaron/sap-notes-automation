@@ -30,6 +30,7 @@ def main():
     asyncio.set_event_loop(loop)
 
     main_window = MainWindow()
+    # main_window = ResultsWindow('DE & CH & AT', {3260768, 3238089, 3259753, 3261086, 3259262, 3258201, 3255869, 3255870}, {3251933}, "test")
     main_window.show()
 
     with loop:
@@ -110,6 +111,9 @@ class MainWindow(QWidget):
     def __init__(self):
         super().__init__()
 
+        # sys.stdout = Stream(newText=self.on_update_text)
+        # sys.stderr = Stream(newText=self.on_update_text)
+
         # setting up browser async
         self.NewScrapeThread = NewScrapeThread()
         self.add_scrape_task_signal.connect(self.NewScrapeThread.add_task)
@@ -118,6 +122,8 @@ class MainWindow(QWidget):
         # setting up browser signals
         self.NewScrapeThread.result_signal.connect(self.start_analysis)
         self.NewScrapeThread.error_signal.connect(self.show_scraping_error)
+        # also getting cookies from browser
+        self.NewScrapeThread.send_cookies_signal.connect(self.import_cookies)
 
         # window bastelei
         self.setWindowTitle("SAP Hinweise")
@@ -178,8 +184,6 @@ class MainWindow(QWidget):
         self.stdout_viewer.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap)
         self.stdout_viewer.setFixedHeight(100)
         self.main_layout.addWidget(self.stdout_viewer)
-        sys.stdout = Stream(newText=self.on_update_text)
-        sys.stderr = Stream(newText=self.on_update_text)
 
 
         self.setLayout(self.main_layout)
@@ -207,6 +211,10 @@ class MainWindow(QWidget):
         cursor.insertText(text)
         self.stdout_viewer.setTextCursor(cursor)
         self.stdout_viewer.ensureCursorVisible()
+
+    def import_cookies(self, cookies):
+        print("GOT COOKIES")
+        self.cookies = cookies
 
 
     def load_week_selector_content(self):
@@ -333,7 +341,7 @@ class MainWindow(QWidget):
             if len(only_in_sap) == 0 and len(only_in_xlsx) == 0:
                 self.a = Alert(self.system, "Keine fehlenden Hinweise")
             else:
-                self.results_window = ResultsWindow(self.system, only_in_sap, only_in_xlsx)
+                self.results_window = ResultsWindow(self.system, only_in_sap, only_in_xlsx, cookies=self.cookies)
                 self.results_window.show()
           
         except Exception:
@@ -352,13 +360,17 @@ class MainWindow(QWidget):
 
 
 class ResultsWindow(QDialog):
-    def __init__(self, system, only_in_sap, only_in_xlsx):
+    def __init__(self, system, only_in_sap, only_in_xlsx, cookies):
+
+        # this var will store the playwright cookies, used by the notes viewer browser
+        self.cookies = cookies
+
         # importing to instance so that playwright note opener has access
         self.only_in_sap = only_in_sap
         self.only_in_xlsx = only_in_xlsx
 
-        # this var will store the reference to the playwright browser context
-        self.context = None
+        ##########c
+        self.browser = None
 
         super().__init__()
         self.setWindowTitle(system)
@@ -379,7 +391,7 @@ class ResultsWindow(QDialog):
                 individualNoteButton = QPushButton(str(notenumber))
                 # i'm not sure exactly what lambda state does, but otherwise all buttons call
                 # opennote with the same argument/number, so i guess it keeps the state of notenumber inside x
-                individualNoteButton.clicked.connect(lambda state, x=notenumber: self.playwright_noteviewer({x}))
+                individualNoteButton.clicked.connect(lambda state, x=notenumber: self.playwright_noteviewer({x}, self.cookies))
 
                 self.OnlySapScrollContentLayout.addWidget(individualNoteButton)    
 
@@ -391,7 +403,7 @@ class ResultsWindow(QDialog):
             self.mainLayout.addWidget(self.OnlySapScrollView)
         
             self.openMissingNotesButton = QPushButton("Fehlende Notes anzeigen")
-            self.openMissingNotesButton.clicked.connect(lambda: self.playwright_noteviewer(self.only_in_sap))
+            self.openMissingNotesButton.clicked.connect(lambda: self.playwright_noteviewer(self.only_in_sap, self.cookies))
             self.mainLayout.addWidget(self.openMissingNotesButton)
 
         if len(only_in_xlsx) > 0:
@@ -405,7 +417,7 @@ class ResultsWindow(QDialog):
                 individualNoteButton = QPushButton(str(notenumber))
                 # i'm not sure exactly what lambda state does, but otherwise all buttons call
                 # opennote with the same argument/number, so i guess it keeps the state of notenumber inside x
-                individualNoteButton.clicked.connect(lambda state, x=notenumber: self.playwright_noteviewer({x}))
+                individualNoteButton.clicked.connect(lambda state, x=notenumber: self.playwright_noteviewer({x}, self.cookies))
 
                 self.OnlyXLSXScrollContentLayout.addWidget(individualNoteButton)    
 
@@ -417,7 +429,7 @@ class ResultsWindow(QDialog):
             self.mainLayout.addWidget(self.OnlyXLSXScrollView)
         
             self.openExcessNotesButton = QPushButton("Unbekannte Notes anzeigen")
-            self.openExcessNotesButton.clicked.connect(lambda: self.playwright_noteviewer(self.only_in_xlsx))
+            self.openExcessNotesButton.clicked.connect(lambda: self.playwright_noteviewer(self.only_in_xlsx, self.cookies))
             self.mainLayout.addWidget(self.openExcessNotesButton)
 
 
@@ -428,52 +440,57 @@ class ResultsWindow(QDialog):
         self.setLayout(self.mainLayout)
 
     @asyncSlot()
-    async def playwright_noteviewer(self, notes):
+    async def playwright_noteviewer(self, cookies, notes):
+
         async with async_playwright() as p:
             # browser context instance is in window instance,
             # so that it can be reused for multiple calls of playwright_noteviewer from ui
             
-            # first checking if context has been set up; if not, run login once
-            if self.context is None:
-                chromepath = chromium_utils.check_browser_install()
-                browser = await p.chromium.launch(headless=False, executable_path=chromepath)
-                self.context = await browser.new_context()
-                login_page = await self.context.new_page()
-
-                await login_page.goto('http://launchpad.support.sap.com')
-
-                # username input
-                await login_page.locator("#j_username").fill(keyring.get_password("system", "launchpad_username"))
-                await login_page.locator("#j_username").press("Enter")
-
-                # password input
-                await login_page.locator("#j_password").fill(keyring.get_password("system", "launchpad_password"))
-                await login_page.locator("#j_password").press("Enter")
-
-                await login_page.close()
 
 
-            # opening all others in new tabs
-            await asyncio.gather(*[self.open_note(self.context, note) for note in notes])
 
-            # for i in range(0, len(notes), 4):
-            #     await asyncio.gather(*[self.open_note(self.context, note) for note in list(notes)[i:i+4]])
-            #     time.sleep(1)
+                # first checking if context has been set up; if not, run login once
+                # if self.context is None:
+                if self.browser is None:
+                    print("neuer browser")
+                    
+                    chromepath = chromium_utils.check_browser_install()
+                    self.browser = await p.chromium.launch(headless=False, executable_path=chromepath)
+                    self.context = await self.browser.new_context()
+                    await self.context.add_cookies(cookies=self.cookies)
+
+                else:
+                    print("browser existiert")
 
 
-    async def open_note(self, context, note):
+                # opening all others in new tabs
+                print(self.browser.is_connected())
+                page = await self.context.new_page()
+                await page.goto("https://launchpad.support.sap.com/#/notes/4545454")
+                # await asyncio.gather(*[self.open_note(self.context, self.cookies, note) for note in notes])
+
+
+
+
+    async def open_note(self, context, cookies, note):
+        # print("vor con und page")
+        # context = await self.browser.new_context()
+        # page = await context.new_page()
+        # print("danach")
+        # await context.add_cookies(cookies)
         page = await context.new_page()
-        note_page_reached = False
 
-        # doesnt work right now
+        note_page_reached = False
         while not note_page_reached:
             await page.goto(f"https://launchpad.support.sap.com/#/notes/{note}")
             await page.wait_for_load_state("networkidle", timeout=0)
             if page.url == f"https://launchpad.support.sap.com/#/notes/{note}":
                 note_page_reached = True
             else:
+                print("page NOT reached", page.url)
+                # sometimes SAP says no ()
                 await page.close()
-                await self.open_note(context, note)
+                await self.open_note(context, cookies, note)
                 
         # wait up to 16.667 minutes :)
         await page.wait_for_timeout(1000000)

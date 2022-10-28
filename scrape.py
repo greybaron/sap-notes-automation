@@ -14,6 +14,7 @@ import chromium_utils
 class NewScrapeThread(QThread):
 
     progress_signal = pyqtSignal(int)
+    send_cookies_signal = pyqtSignal(list)
     result_signal = pyqtSignal(set)
     error_signal = pyqtSignal(str)
 
@@ -60,6 +61,7 @@ class NewScrapeThread(QThread):
                 if self.page.url[-14:] != '?redirect=true':
                     raise AuthenticationError(f"\n\nAccount username/Password is probably wrong. Expected URL ending with '?redirect=true'\nGot URL='{self.page.url}'")
 
+                self.send_cookies_signal.emit(context.cookies())
                 self.progress_signal.emit(43)
 
                 print("Accessing Notes page")
