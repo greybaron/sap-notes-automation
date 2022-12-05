@@ -117,7 +117,8 @@ class NewScrapeThread(QThread):
 
         self.progress_signal.emit(40)
 
-        components_box = self.page.get_by_role("textbox", name="Komponenten (exakt)")
+        # components_box = self.page.get_by_role("textbox", name="Komponenten (exakt)")
+        components_box = self.page.locator("[id=\"__xmlview1--idComponentsExact-inner\"]")
         components_box.click()
 
         components_box.press("Control+a")
