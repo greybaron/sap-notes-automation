@@ -1,5 +1,4 @@
 import csv
-from multiprocessing import AuthenticationError
 import time
 import traceback
 
@@ -33,7 +32,7 @@ class NewScrapeThread(QThread):
                 print("You don't need to wait for this to finish\n")
                 print("Starting browser backend")
 
-                browser = p.chromium.launch(headless=True, executable_path=chromepath)
+                browser = p.chromium.launch(headless=False, executable_path=chromepath)
                 context = browser.new_context()
                 # this way, other functions of scrape.py have an easy ref to page
                 self.page = context.new_page()
@@ -59,7 +58,7 @@ class NewScrapeThread(QThread):
 
                 # on auth success, this would be the next url
                 if self.page.url[-14:] != '?redirect=true':
-                    raise AuthenticationError(f"\n\nAccount username/Password is probably wrong. Expected URL ending with '?redirect=true'\nGot URL='{self.page.url}'")
+                    raise ConnectionError(f"\n\nAccount username/Password is probably wrong. Expected URL ending with '?redirect=true'\nGot URL='{self.page.url}'")
 
                 self.send_cookies_signal.emit(context.cookies())
                 self.progress_signal.emit(43)
@@ -73,7 +72,10 @@ class NewScrapeThread(QThread):
                 self.progress_signal.emit(45)
 
                 print("Waiting for site to load")
-                self.page.wait_for_load_state("networkidle")
+                self.page.wait_for_load_state("networkidle", timeout=0)
+
+                if self.page.locator("#serviceErrorMessageBox").count() != 0:
+                    raise ZeroDivisionError("sap sagt nein")
 
                 self.progress_signal.emit(85)
                 
