@@ -248,7 +248,6 @@ class MainWindow(QWidget):
     def prepare_target_dir(self, output_dir):
         selected_date = self.possible_week_choices[self.weekSelector.currentIndex()]
         year = selected_date['year']
-        kw = selected_date['kw']
 
         try:
             shutil.rmtree(output_dir)
@@ -290,6 +289,10 @@ class MainWindow(QWidget):
 
         selection_date = possible_week_choices[weekSelector.currentIndex()]
 
+        # .xlsx is sometimes sent with single digig
+        if len(str(selection_date['kw'])) == 1:
+            selection_date = 0 + selection_date
+
         # ensuring that top level target path exists
         container_dir = Path.home().joinpath("Downloads/Ergebnis SAP Hinweise")
         try:
@@ -300,26 +303,33 @@ class MainWindow(QWidget):
         target_dir = container_dir.joinpath(f"{selection_date['year']} KW{selection_date['kw']}")
 
         # the file naming might change in the future
-        xlsx_india_path = Path.home().joinpath(f"Downloads/SAP-Notes Week {selection_date['kw']} -{selection_date['year']}.xlsx")
+        xlsx_india_path = Path.home().joinpath(f"Downloads/SAP Notes Week {selection_date['kw']} {selection_date['year']}.xlsx")
 
         xlsx_new_target_path = target_dir.joinpath(f"SAP Hinweise KW {selection_date['kw']}_{selection_date['year']}.xlsx")
+
+        # recently India has sent .xlsx like this (why must they change it???)
+        xlsx_new_new_target_path = target_dir.joinpath(f"SAP Notes Week {selection_date['kw']} {selection_date['year']}.xlsx")
 
         if keyring.get_password("system", "launchpad_username") is None or keyring.get_password("system", "launchpad_password") is None:
             self.a = Alert("Keine Logindaten vorhanden", "Zuerst Launchpad-Account festlegen")
             return
 
 
-        if not xlsx_new_target_path.is_file():
-            if not xlsx_india_path.is_file():
-                # xlsx wasn't found at either location
-                self.a = Alert("XLSX fehlt", f'"{xlsx_india_path}" existiert nicht')
-                return
-            else:
-                # xlsx exists @ india_path → move to target_path (and rename)
-                self.prepare_target_dir(target_dir)
-                shutil.move(xlsx_india_path, xlsx_new_target_path)
-                
-                webbrowser.open(f"file://{target_dir}")
+
+        if xlsx_new_target_path.is_file():
+            # xlsx exists @ india_path → move to target_path (and rename)
+            self.prepare_target_dir(target_dir)
+            shutil.move(xlsx_india_path, xlsx_new_target_path)    
+            webbrowser.open(f"file://{target_dir}")
+        elif xlsx_new_new_target_path.is_file():
+            self.prepare_target_dir(target_dir)
+            shutil.move(xlsx_india_path, xlsx_new_new_target_path)    
+            webbrowser.open(f"file://{target_dir}")   
+        elif not xlsx_india_path.is_file():
+            # xlsx wasn't found at either of the 3 locations
+            self.a = Alert("XLSX fehlt", f'"{xlsx_india_path}" existiert nicht')
+            return      
+
         
         # setting up references for result signal callback
         self.system = system
